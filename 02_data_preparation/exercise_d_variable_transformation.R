@@ -35,3 +35,21 @@ my_titanic$Age <- as.integer(ordered(my_titanic$Age, levels=c("Child", "Adult"))
 my_titanic
 
 # Transforming the (partly) ordinal variable "Class"
+
+# While the three values ("1st", "2nd", "3rd") are obviously ordered, is the value "Crew" a little bit separated from that.
+# Therefore we need to have a Boolean column for "Crew" but an ordered column for the other three values.
+
+# Creating a new different column for "Crew"
+ifelse(my_titanic$Class =="Crew",1,0)
+my_titanic$Class_Crew <- ifelse(my_titanic$Class =="Crew",1,0)
+
+# Ordering "Class"
+ordered(my_titanic$Class, levels= c("Crew", "3rd", "2nd","1st"))
+
+# Converting it into integers
+as.integer(ordered(my_titanic$Class, levels= c("Crew", "3rd", "2nd","1st")))
+
+# Subtracting 1 to have from 0 to 3 instead from 1 to 4
+my_titanic$Class <- as.integer(ordered(my_titanic$Class, levels= c("Crew", "3rd", "2nd","1st"))) - 1
+
+my_titanic
