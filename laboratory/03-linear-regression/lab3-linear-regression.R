@@ -1,4 +1,4 @@
-#### Lab 1: Regression on Auto dataset ####
+#### Lab 3: Regression on Auto dataset ####
 #
 # TASK:
 # Apply linear regression on the dataset "Auto" that comes with the ISLR library.
