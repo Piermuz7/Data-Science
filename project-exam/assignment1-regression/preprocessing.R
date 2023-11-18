@@ -34,47 +34,25 @@ summary(lc_data)
 threshold <- nrow(lc_data) * 0.4
 # remove columns with NA values greater than or equal to the threshold
 lc_data <- lc_data[, all_NAs < threshold]
-# annual_inc: 4 NAs replacement by the mean
-tmp_mean <- as.integer(mean(lc_data$annual_inc, na.rm = TRUE))
-lc_data$annual_inc <- 
-  ifelse(is.na(lc_data$annual_inc),
-         tmp_mean, lc_data$annual_inc)
-# delinq_2yrs: 25 NAs replacement by the mean
-tmp_mean <- as.integer(mean(lc_data$delinq_2yrs, na.rm = TRUE))
-lc_data$delinq_2yrs <- 
-  ifelse(is.na(lc_data$delinq_2yrs),
-         tmp_mean, lc_data$delinq_2yrs)
-# earliest_cr_line: 25 NAs replacement by the mode
-tmp_mode <- names(sort(table(lc_data$earliest_cr_line), decreasing = TRUE))[1]
-lc_data$earliest_cr_line[is.na(lc_data$earliest_cr_line)] <- tmp_mode
-# inq_last_6mths: 25 NAs replacement by the mean
-tmp_mean <- as.integer(mean(lc_data$inq_last_6mths, na.rm = TRUE))
-lc_data$inq_last_6mths <- 
-  ifelse(is.na(lc_data$inq_last_6mths),
-         tmp_mean, lc_data$inq_last_6mths)
-# open_acc: 25 NAs replacement by the mode
-tmp_mode <- names(sort(table(lc_data$open_acc), decreasing = TRUE))[1]
-lc_data$open_acc[is.na(lc_data$open_acc)] <- tmp_mode
-# pub_rec: 25 NAs replacement by the mode
-tmp_mode <- names(sort(table(lc_data$pub_rec), decreasing = TRUE))[1]
-lc_data$pub_rec[is.na(lc_data$pub_rec)] <- tmp_mode
-# revol_bal: 2 NAs replacement by the mean
-tmp_mean <- as.integer(mean(lc_data$revol_bal, na.rm = TRUE))
-lc_data$revol_bal <- 
-  ifelse(is.na(lc_data$revol_bal),
-         tmp_mean, lc_data$revol_bal)
-# revol_util: 454 NAs replacement by the mean
-tmp_mean <- as.integer(mean(lc_data$revol_util, na.rm = TRUE))
-lc_data$revol_util <- 
-  ifelse(is.na(lc_data$revol_util),
-         tmp_mean, lc_data$revol_util)
-# total_acc: 25 NAs replacement by the mode
-tmp_mode <- names(sort(table(lc_data$total_acc), decreasing = TRUE))[1]
-lc_data$total_acc[is.na(lc_data$total_acc)] <- tmp_mode
 
-#########################
-# TODO: remaining columns
-#########################
+# NA handling step
+na_mean <- c("annual_inc","delinq_2yrs","inq_last_6mths", "revol_bal", "revol_util", "tot_coll_amt","tot_cur_bal","total_rev_hi_lim")
+na_mode <- c("earliest_cr_line", "open_acc", "pub_rec", "total_acc", "last_credit_pull_d", "collections_12_mths_ex_med","acc_now_delinq")
+
+# function to replace NAs by column mean
+replace_na_by_mean <- function(col) {
+  tmp_mean <- as.integer(mean(lc_data[[col]], na.rm = TRUE))
+  lc_data[[col]] <- ifelse(is.na(lc_data[[col]]), tmp_mean, lc_data[[col]])
+}
+# function to replace NAs by column mode
+replace_na_by_mode <- function(col) {
+  tmp_mode <- names(sort(table(lc_data[[col]], decreasing = TRUE)))[1]
+  lc_data[[col]] <- ifelse(is.na(lc_data[[col]]), tmp_mode, lc_data[[col]])
+}
+# apply function to each column in the list
+lapply(na_mean, replace_na_with_mean)
+# apply function to each column in the list
+lapply(na_mode, replace_na_with_mode)
 
 # remove all NAs values
 lc_data <- na.omit(lc_data)
