@@ -8,6 +8,19 @@ library(readr)
 library(dplyr)
 library(caret)
 
+#### Functions ####
+# function to replace NAs by column mean
+replace_na_by_mean <- function(col) {
+  tmp_mean <- as.integer(mean(lc_data[[col]], na.rm = TRUE))
+  lc_data[[col]] <- ifelse(is.na(lc_data[[col]]), tmp_mean, lc_data[[col]])
+}
+
+# function to replace NAs by column mode
+replace_na_by_mode <- function(col) {
+  tmp_mode <- names(sort(table(lc_data[[col]]), decreasing = TRUE))[1]
+  lc_data[[col]] <- ifelse(is.na(lc_data[[col]]), tmp_mode, lc_data[[col]])
+}
+
 #### Data Preprocessing ####
 
 # set the working directory
@@ -39,51 +52,40 @@ lc_data <- lc_data[, all_NAs < threshold]
 na_mean <- c("annual_inc","delinq_2yrs","inq_last_6mths", "revol_bal", "revol_util", "tot_coll_amt","tot_cur_bal","total_rev_hi_lim")
 na_mode <- c("earliest_cr_line", "open_acc", "pub_rec", "total_acc", "last_credit_pull_d", "collections_12_mths_ex_med","acc_now_delinq")
 
-# function to replace NAs by column mean
-replace_na_by_mean <- function(col) {
-  tmp_mean <- as.integer(mean(lc_data[[col]], na.rm = TRUE))
-  lc_data[[col]] <- ifelse(is.na(lc_data[[col]]), tmp_mean, lc_data[[col]])
-}
-# function to replace NAs by column mode
-replace_na_by_mode <- function(col) {
-  tmp_mode <- names(sort(table(lc_data[[col]]), decreasing = TRUE))[1]
-  lc_data[[col]] <- ifelse(is.na(lc_data[[col]]), tmp_mode, lc_data[[col]])
-}
-# apply function to each column in the list
-lapply(na_mean, replace_na_by_mean)
-# apply function to each column in the list
-lapply(na_mode, replace_na_by_mode)
+# apply function to replace each column value by mean
+lc_data[na_mean] <- lapply(na_mean, replace_na_by_mean)
+# apply function to replace each column value by mode
+lc_data[na_mode] <- lapply(na_mode, replace_na_by_mode)
 
-# remove all NAs values
-lc_data <- na.omit(lc_data)
+# Categorical variables have to be mapped into numerical
+cat_columns <- c("emp_length", "home_ownership", "verification_status", "purpose", "zip_code", "addr_state", "earliest_cr_line", "initial_list_status", "last_credit_pull_d", "application_type")
+
+# Continuous numerical variables have to be standardized
+num_columns <- c("loan_amnt", "funded_amnt", "funded_amnt_inv", "annual_inc", "dti", "revol_bal", "revol_util", "total_rec_prncp", "total_rec_int", "total_rec_late_fee", "tot_coll_amt", "tot_cur_bal", "total_rev_hi_lim")
 
 # remove zero variance columns
-lc_data <- subset(lc_data, select = -c(total_rec_late_fee, collections_12_mths_ex_med, acc_now_delinq))
-
-#identify categorical columns
-cat_col_names <- names(lc_data)[sapply(lc_data, is.character)]
+#lc_data <- subset(lc_data, select = -c(total_rec_late_fee, collections_12_mths_ex_med, acc_now_delinq))
 
 # extract response variable
-repsponse_int_rate <- lc_data$int_rate
+response_int_rate <- lc_data$int_rate
 lc_data$int_rate <- NULL
 
-# identify categorical columns
-lc_data_cat <- lc_data[, names(lc_data)[sapply(lc_data, is.character)]]
-
-# subset data for preprocessing (exclude categorical variables)
-lc_data_num <- lc_data[, setdiff(names(lc_data), cat_col_names), drop = FALSE]
+# subset data for preprocessing (include numerical variables only)
+lc_data_num <- lc_data[num_columns]
 # standardize data
 lc_data_num <- predict(preProcess(lc_data_num, method = c("center", "scale")), newdata = lc_data_num)
 
+# subset data for preprocessing (include categorical variables only)
+lc_data_cat <- lc_data[cat_columns]
 # one-hot encode all categorical columns
 lc_data_cat <- dummy_cols(lc_data_cat, remove_selected_columns = TRUE)
 
-lc_data <- cbind(lc_data_cat, lc_data_num)
+#lc_data <- cbind(lc_data_cat, lc_data_num)
 
 # reattach response variable
-lc_data$int_rate <- repsponse_int_rate
+lc_data$int_rate <- response_int_rate
 
-lc_data <- subset(lc_data, select = c(int_rate, names(lc_data_cat)))
+#lc_data <- subset(lc_data, select = c(int_rate, names(lc_data_cat)))
 
 # linear regression on ALL pre-processed data attributes:
 lm.fit <- lm(int_rate ~ ., data = lc_data)
