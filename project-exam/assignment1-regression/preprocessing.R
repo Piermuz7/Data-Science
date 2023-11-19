@@ -31,7 +31,7 @@ all_NAs <- colSums(is.na(lc_data))
 summary(lc_data)
 # drop all columns that have NAs >= 40% of the lc dataset rows
 # now the "almost clean" dataset has 31 columns
-threshold <- nrow(lc_data) * 0.4
+threshold <- round(nrow(lc_data) * 0.4)
 # remove columns with NA values greater than or equal to the threshold
 lc_data <- lc_data[, all_NAs < threshold]
 
@@ -46,13 +46,13 @@ replace_na_by_mean <- function(col) {
 }
 # function to replace NAs by column mode
 replace_na_by_mode <- function(col) {
-  tmp_mode <- names(sort(table(lc_data[[col]], decreasing = TRUE)))[1]
+  tmp_mode <- names(sort(table(lc_data[[col]]), decreasing = TRUE))[1]
   lc_data[[col]] <- ifelse(is.na(lc_data[[col]]), tmp_mode, lc_data[[col]])
 }
 # apply function to each column in the list
-lapply(na_mean, replace_na_with_mean)
+lapply(na_mean, replace_na_by_mean)
 # apply function to each column in the list
-lapply(na_mode, replace_na_with_mode)
+lapply(na_mode, replace_na_by_mode)
 
 # remove all NAs values
 lc_data <- na.omit(lc_data)
