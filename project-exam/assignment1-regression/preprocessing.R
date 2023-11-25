@@ -21,6 +21,12 @@ replace_na_by_mode <- function(col) {
   lc_data[[col]] <- ifelse(is.na(lc_data[[col]]), tmp_mode, lc_data[[col]])
 }
 
+# function to replace dates with unix time
+to_unix_time <- function(date) {
+  tmp <- paste("01", date, sep="-")
+  return (as.numeric(as.POSIXct(tmp, format="%d-%b-%Y", tz="UTC")))
+}
+
 #### Data Preprocessing ####
 
 set.seed(42)  # For reproducibility
@@ -39,8 +45,6 @@ lc_data <- subset(lc_data, select = -c(collection_recovery_fee, installment, iss
                                        pymnt_plan, recoveries, term, total_pymnt,
                                        total_pymnt_inv, title, desc, url, member_id, policy_code, emp_title, pymnt_plan, id, zip_code))
 
-
-
 ### Data Cleaning ###
 
 # count all NAs in the lc dataset
@@ -55,30 +59,23 @@ lc_data <- lc_data[, all_NAs < threshold]
 # test omit rows contain NA
 lc_data <- na.omit(lc_data)
 
-# NA handling step
-#na_mean <- c("annual_inc","delinq_2yrs","inq_last_6mths", "revol_bal", "revol_util", "tot_coll_amt","tot_cur_bal","total_rev_hi_lim")
-#na_mode <- c("earliest_cr_line", "open_acc", "pub_rec", "total_acc", "last_credit_pull_d", "collections_12_mths_ex_med","acc_now_delinq")
+# map dates to unix time
+lc_data$earliest_cr_line <- apply(lc_data, 1, function(row) to_unix_time(row["earliest_cr_line"]))
+lc_data$last_credit_pull_d <- apply(lc_data, 1, function(row) to_unix_time(row["last_credit_pull_d"]))
+
+## NA handling step ##
+na_mean <- c("last_credit_pull_d","earliest_cr_line","annual_inc","delinq_2yrs","inq_last_6mths", "revol_bal", "revol_util", "tot_coll_amt","tot_cur_bal","total_rev_hi_lim")
+na_mode <- c("open_acc", "pub_rec", "total_acc", "collections_12_mths_ex_med","acc_now_delinq")
 
 # apply function to replace each column value by mean
-#lc_data[na_mean] <- lapply(na_mean, replace_na_by_mean)
+lc_data[na_mean] <- lapply(na_mean, replace_na_by_mean)
 # apply function to replace each column value by mode
-#lc_data[na_mode] <- lapply(na_mode, replace_na_by_mode)
+lc_data[na_mode] <- lapply(na_mode, replace_na_by_mode)
 
 # Categorical variables have to be mapped into numerical
-#cat_columns <- c("emp_length", "home_ownership", "verification_status", "purpose", "zip_code", "addr_state", "earliest_cr_line", "initial_list_status", "last_credit_pull_d", "application_type")
-cat_columns <- c("emp_length", "home_ownership", "verification_status", "purpose", "addr_state", "earliest_cr_line", "initial_list_status", "last_credit_pull_d", "application_type")
+cat_columns <- c("emp_length", "home_ownership", "verification_status", "purpose", "addr_state", "initial_list_status", "application_type")
 # Continuous numerical variables have to be standardized
-#num_columns <- c("loan_amnt", "funded_amnt", "funded_amnt_inv", "annual_inc", "dti", "revol_bal", "revol_util", "total_rec_prncp", "total_rec_int", "total_rec_late_fee", "tot_coll_amt", "tot_cur_bal", "total_rev_hi_lim")
-num_columns <- c("loan_amnt", "annual_inc", "dti", "revol_bal", "revol_util", "total_rec_prncp", "total_rec_int", "total_rec_late_fee", "tot_coll_amt", "tot_cur_bal", "total_rev_hi_lim") #without multicollinearity ("funded_amnt", "funded_amnt_inv")
-
-#lm.fit0 <- lm(int_rate ~ ., data = lc_data)
-
-#vif(lm.fit0) # there is multicollinearity
-#cor(lc_data) 
-
-# remove zero variance columns
-#lc_data <- subset(lc_data, select = -c(total_rec_late_fee, collections_12_mths_ex_med, acc_now_delinq))
-
+num_columns <- c("earliest_cr_line","last_credit_pull_d","loan_amnt", "annual_inc", "dti", "revol_bal", "revol_util", "total_rec_prncp", "total_rec_int", "total_rec_late_fee", "tot_coll_amt", "tot_cur_bal", "total_rev_hi_lim")
 # extract response variable
 response_int_rate <- lc_data$int_rate
 lc_data$int_rate <- NULL
@@ -132,7 +129,7 @@ cat("\nTesting RMSE:", test_rmse, "\n")
 cat("Testing R-squared:", test_r_squared, "\n")
 
 # linear regression on ALL pre-processed data attributes:
-#lm.fit <- lm(int_rate ~ ., data = lc_data)
+lm.fit <- lm(int_rate ~ ., data = lc_data)
 
 # calculate RMSE
 print(sqrt(mean(lm.fit$residuals^2)))
