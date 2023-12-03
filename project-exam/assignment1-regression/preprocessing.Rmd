@@ -56,12 +56,6 @@ we delete the title column because NLP is needed
 lc_data$title <- NULL
 ```
 
-we delete the emp_title column as there are several entries for the same job title. In addition, some titles are unclear (NLP required)
-
-```{r}
-lc_data$emp_title <- NULL
-```
-
 let's examine the **loan_amnt** column
 
 ```{r}
@@ -104,6 +98,175 @@ remove funded_amnt_inv for the same reason as above
 ```{r}
 lc_data$funded_amnt_inv <- NULL
 ```
+
+let's see the int_rate distribution.
+```{r}
+hist(lc_data$int_rate, breaks = 20, main = "int_rate distribution", xlab = "int_rate", col = "lightblue", border = "black")
+```
+Standardize int rate:
+```{r}
+lc_data$int_rate <- scale(lc_data$int_rate)
+```
+we delete the emp_title column as there are several entries for the same job title and because there are too many different values for one-hot encoding. In addition, some titles are unclear (NLP required)
+```{r}
+n_distinct(lc_data$emp_title)
+```
+Then remove it:
+```{r}
+lc_data$emp_title <- NULL
+```
+
+
+Since **emp_length** seems to be categorical, we transform it:
+```{r}
+lc_data$emp_length <- as.factor(lc_data$emp_length)
+table(lc_data$emp_length)
+```
+As we can observe, there are 40363 NAs. We can assume 40363 do not work.
+```{r}
+barplot(table(lc_data$emp_length),
+        xlab = "emp_length years", 
+        ylab = "Frequency", 
+        col = "skyblue", 
+        border = "black",
+        cex.names = 0.6)  # The size of the main title
+```
+
+Cleaning of **home_ownership**:
+
+During the data cleaning phase, our analysis revealed that the variable "home_ownership" does not show a distinct correlation with interest rates. Specifically, among the categories, "ANY" and "OTHER" contain 2 and 154 cases, respectively, while the "NONE" category comprises 39 cases. Although the "NONE" category appears to demonstrate a higher interest rate compared to others, the limited sample size of 39 cases raises doubts about the reliability of this observation. Notably, the "NONE" category might pertain to individuals experiencing homelessness, prompting ethical concerns about loan provision to this demographic.
+
+```{r}
+ggplot(data = lc_data, mapping = aes(x=int_rate,y=home_ownership)) + geom_boxplot()
+```
+Then, we retain mortgage, own and rent:
+```{r}
+lc_data <- lc_data %>% filter(home_ownership %in% c("MORTGAGE","OWN","RENT"))
+lc_data$home_ownership <- as.factor(lc_data$home_ownership)
+```
+
+# application joint handling
+```{r}
+
+# merging annual income
+lc_data <- lc_data %>% mutate(
+    annual_inc_merged = ifelse(is.na(annual_inc_joint)== TRUE, annual_inc,annual_inc_joint)) 
+
+lc_data <- lc_data %>% select(-annual_inc,-annual_inc_joint)
+
+
+# merging debt to income ratio
+lc_data <- lc_data %>% mutate(
+    dti_merged = ifelse(is.na(dti_joint)== TRUE, dti,dti_joint)) 
+
+lc_data <- lc_data %>% select(-dti,-dti_joint)
+
+```
+
+Upon reviewing the summary again, it becomes apparent that there are merely 460 joint applications, constituting a small subset within the extensive dataset of around 800k rows. Through consolidating the debt-to-income ratios (dti's), we can pinpoint the data pertinent to our research objectives. Hence, it is advisable to eliminate the columns verification_status_joint and application_type to prevent introducing unwarranted variability into our analysis.
+
+```{r}
+table(lc_data$verification_status)
+table(lc_data$verification_status_joint)
+```
+
+```{r}
+lc_data <- lc_data %>% select(-verification_status_joint, -application_type)
+```
+
+# useless columns
+remove the description:
+```{r}
+lc_data$desc <- NULL
+```
+
+remove the url:
+```{r}
+lc_data$url <- NULL
+```
+
+remove the zip code:
+```{r}
+lc_data$zip_code <- NULL
+```
+Let's checl if other is NA or a real value for purpose. It's a real one, so we don't have to handle it.
+```{r}
+lc_data$purpose <- as.factor(lc_data$purpose)
+ggplot(data = lc_data, mapping = aes(x=int_rate,y=purpose)) + geom_boxplot()
+```
+Let's have a glance to the state address:
+```{r}
+table(lc_data$addr_state)
+lc_data$addr_state <- as.factor(lc_data$addr_state)
+```
+Regarding delinquency in the last 2 years, there are few NAs then remove them:
+```{r}
+lc_data <- lc_data %>% 
+    filter(!(is.na(delinq_2yrs)))
+```
+
+Transform the 2 following categorical date in unix time. Moreover, we remove 25 NAs from earliest_cr_line and 45 NAs from last_credit_pull_d.
+
+```{r}
+table(lc_data$earliest_cr_line)
+table(lc_data$last_credit_pull_d)
+lc_data <- lc_data %>% 
+    filter(!(is.na(earliest_cr_line))) %>%
+    filter(!(is.na(last_credit_pull_d)))
+
+# function to replace dates with unix time
+to_unix_time <- function(date) {
+  tmp <- paste("01", date, sep="-")
+  return (as.numeric(as.POSIXct(tmp, format="%d-%b-%Y", tz="UTC")))
+}
+
+# map dates to unix time
+lc_data$earliest_cr_line <- apply(lc_data, 1, function(row) to_unix_time(row["earliest_cr_line"]))
+lc_data$last_credit_pull_d <- apply(lc_data, 1, function(row) to_unix_time(row["last_credit_pull_d"]))
+
+# standardize them
+scale(lc_data$earliest_cr_line)
+scale(lc_data$last_credit_pull_d)
+```
+
+```{r}
+lc_data <- lc_data %>% 
+  mutate(
+    mths_since_delinq_cat = ifelse(is.na(mths_since_last_delinq)== TRUE,"no_delinq", 
+                                ifelse(mths_since_last_delinq <= 12, "recent", 
+                                   ifelse(mths_since_last_delinq <= 36, "1_to_3_years",
+                                          ifelse(mths_since_last_delinq <= 60,     "3_to_5_years","more_than_5_years")))) 
+    
+  ) %>% select(-mths_since_last_delinq)
+          
+lc_data$mths_since_delinq_cat <- as.factor(lc_data$mths_since_delinq_cat)
+
+lc_data <- lc_data %>% 
+  mutate(
+    mths_since_record_cat = ifelse(is.na(mths_since_last_record)== TRUE,"no_record", 
+                                ifelse(mths_since_last_record <= 12, "recent", 
+                                   ifelse(mths_since_last_record <= 36, "1_to_3_years",
+                                          ifelse(mths_since_last_record <= 60,     "3_to_5_years","more_than_5_years")))) 
+    
+  ) %>% select(-mths_since_last_record)
+          
+lc_data$mths_since_record_cat <- as.factor(lc_data$mths_since_last_record_cat)
+```
+
+```{r}
+ggplot(data = lc_data, mapping = aes(x=mths_since_last_record)) + geom_histogram()
+ggplot(data = lc_data, mapping = aes(x=int_rate,y=mths_since_last_record)) + geom_point(alpha=0.2)
+```
+
+
+```{r}
+lc_data <- lc_data %>% mutate(
+                        inq_last_12m = ifelse(is.na(inq_last_12m)== TRUE,0, inq_last_12m)) %>% mutate(
+                          open_rv_24m = ifelse(is.na(open_rv_24m)== TRUE,0, open_rv_24m)
+    )
+```
+
+
 
 Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
 
