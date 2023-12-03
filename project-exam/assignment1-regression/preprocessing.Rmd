@@ -105,7 +105,7 @@ hist(lc_data$int_rate, breaks = 20, main = "int_rate distribution", xlab = "int_
 ```
 Standardize int rate:
 ```{r}
-lc_data$int_rate <- scale(lc_data$int_rate)
+#lc_data$int_rate <- scale(lc_data$int_rate)
 ```
 we delete the emp_title column as there are several entries for the same job title and because there are too many different values for one-hot encoding. In addition, some titles are unclear (NLP required)
 ```{r}
@@ -208,11 +208,8 @@ lc_data <- lc_data %>%
 Transform the 2 following categorical date in unix time. Moreover, we remove 25 NAs from earliest_cr_line and 45 NAs from last_credit_pull_d.
 
 ```{r}
-table(lc_data$earliest_cr_line)
-table(lc_data$last_credit_pull_d)
 lc_data <- lc_data %>% 
-    filter(!(is.na(earliest_cr_line))) %>%
-    filter(!(is.na(last_credit_pull_d)))
+    filter(!(is.na(earliest_cr_line)))
 
 # function to replace dates with unix time
 to_unix_time <- function(date) {
@@ -222,11 +219,9 @@ to_unix_time <- function(date) {
 
 # map dates to unix time
 lc_data$earliest_cr_line <- apply(lc_data, 1, function(row) to_unix_time(row["earliest_cr_line"]))
-lc_data$last_credit_pull_d <- apply(lc_data, 1, function(row) to_unix_time(row["last_credit_pull_d"]))
 
 # standardize them
-scale(lc_data$earliest_cr_line)
-scale(lc_data$last_credit_pull_d)
+lc_data$earliest_cr_line <- scale(lc_data$earliest_cr_line)
 ```
 
 ```{r}
@@ -243,27 +238,87 @@ lc_data$mths_since_delinq_cat <- as.factor(lc_data$mths_since_delinq_cat)
 
 lc_data <- lc_data %>% 
   mutate(
-    mths_since_record_cat = ifelse(is.na(mths_since_last_record)== TRUE,"no_record", 
+    mths_since_last_record_cat = ifelse(is.na(mths_since_last_record)== TRUE,"no_record", 
                                 ifelse(mths_since_last_record <= 12, "recent", 
                                    ifelse(mths_since_last_record <= 36, "1_to_3_years",
                                           ifelse(mths_since_last_record <= 60,     "3_to_5_years","more_than_5_years")))) 
     
   ) %>% select(-mths_since_last_record)
+
+lc_data <- lc_data %>% mutate(
+    mths_since_last_major_derog_cat = ifelse(is.na(mths_since_last_major_derog)== TRUE,"No_derog", 
+                                ifelse(mths_since_last_major_derog <= 12, "recent", 
+                                   ifelse(mths_since_last_major_derog <= 36, "1_to_3_years",
+                                          ifelse(mths_since_last_major_derog <= 60,     "3_to_5_years","more_than_5_years")))) 
+    
+  ) %>% select(-mths_since_last_major_derog)
+
+lc_data$mths_since_last_major_derog_cat <- as.factor(lc_data$mths_since_last_major_derog_cat) 
           
-lc_data$mths_since_record_cat <- as.factor(lc_data$mths_since_last_record_cat)
+lc_data$mths_since_last_record_cat <- as.factor(lc_data$mths_since_last_record_cat)
+```
+
+The columns **revol_bal**,**revol_util** and **collections_12_mths_ex_med** contain only few NA values, we can remove them
+```{r}
+lc_data <- lc_data %>% 
+    filter(!(is.na(revol_bal))) %>% 
+        filter(!(is.na(revol_util))) %>% 
+        filter(!(is.na(collections_12_mths_ex_med)))
 ```
 
 ```{r}
-ggplot(data = lc_data, mapping = aes(x=mths_since_last_record)) + geom_histogram()
-ggplot(data = lc_data, mapping = aes(x=int_rate,y=mths_since_last_record)) + geom_point(alpha=0.2)
+lc_data$initial_list_status <- as.factor(lc_data$initial_list_status)
 ```
 
+remove the last credit pull for this current loan:
+```{r}
+lc_data$last_credit_pull_d <- NULL
+lc_data$policy_code <- NULL
+```
+
+```{r}
+ggplot(data = lc_data, mapping = aes(x=int_rate,y=tot_coll_amt))+geom_point(alpha=0.2)
+
+ggplot(data = lc_data, mapping = aes(x=int_rate,y=tot_coll_amt))+geom_boxplot()
+```
+
+```{r}
+
+lc_data <- lc_data %>% mutate(
+    tot_coll_amt = ifelse(is.na(tot_coll_amt)== TRUE,0, tot_coll_amt))
+ggplot(data = lc_data, mapping = aes(x=int_rate,y=tot_coll_amt))+geom_point(alpha=0.2)
+
+ggplot(data = lc_data, mapping = aes(x=int_rate,y=tot_coll_amt, group = 1))+geom_boxplot()
+```
 
 ```{r}
 lc_data <- lc_data %>% mutate(
-                        inq_last_12m = ifelse(is.na(inq_last_12m)== TRUE,0, inq_last_12m)) %>% mutate(
-                          open_rv_24m = ifelse(is.na(open_rv_24m)== TRUE,0, open_rv_24m)
-    )
+    tot_cur_bal = ifelse(is.na(tot_cur_bal)== TRUE,0, tot_cur_bal))
+```
+
+
+
+```{r}
+lc_data <- lc_data %>%                                                mutate(
+    open_acc_6m = ifelse(is.na(open_acc_6m)== TRUE,0, open_acc_6m)) %>% mutate(
+    open_il_6m = ifelse(is.na(open_il_6m)== TRUE,0, open_il_6m))   %>% mutate(
+    open_il_12m = ifelse(is.na(open_il_12m)== TRUE,0, open_il_12m)) %>% mutate( 
+    open_il_24m = ifelse(is.na(open_il_24m)== TRUE,0, open_il_24m)) %>% mutate( 
+    mths_since_rcnt_il = ifelse(is.na(mths_since_rcnt_il)== TRUE,0, mths_since_rcnt_il)) %>% mutate( 
+    total_bal_il = ifelse(is.na(total_bal_il)== TRUE,0, total_bal_il)) %>% mutate( 
+    il_util = ifelse(is.na(il_util)== TRUE,0, il_util)) %>% mutate( 
+    open_rv_12m = ifelse(is.na(open_rv_12m)== TRUE,0, open_rv_12m)) %>% mutate( 
+    total_rev_hi_lim = ifelse(is.na(total_rev_hi_lim)== TRUE,0, total_rev_hi_lim)) %>% mutate( 
+    max_bal_bc = ifelse(is.na(max_bal_bc)== TRUE,0, max_bal_bc)) %>% mutate( 
+    all_util = ifelse(is.na(all_util)== TRUE,0, all_util)) %>% mutate( 
+    inq_fi = ifelse(is.na(inq_fi)== TRUE,0, inq_fi)) %>% mutate( 
+    total_cu_tl = ifelse(is.na(total_cu_tl)== TRUE,0, total_cu_tl)) %>% mutate( 
+    inq_last_12m = ifelse(is.na(inq_last_12m)== TRUE,0, inq_last_12m)) %>% mutate( 
+    open_rv_24m = ifelse(is.na(open_rv_24m)== TRUE,0, open_rv_24m)) 
+```
+
+```{r}
+summary(lc_data)
 ```
 
 
