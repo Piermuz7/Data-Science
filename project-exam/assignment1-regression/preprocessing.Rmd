@@ -3,7 +3,7 @@ title: "R Notebook"
 output: html_notebook
 ---
 
-# Data Preprocessing
+# Data Pre-processing
 
 load needed libraries
 
@@ -40,8 +40,69 @@ lc_data <- subset(lc_data, select = -c(collection_recovery_fee, installment, iss
 ```
 
 ```{r}
-correlation <- cor(lc_data$mths_since_last_record,lc_data$int_rate,use = "complete.obs")
-print(correlation)
+summary(lc_data)
+```
+
+eliminate the columns with the id since they are not useful
+
+```{r}
+lc_data$id <- NULL
+lc_data$member_id <- NULL
+```
+
+we delete the title column because NLP is needed
+
+```{r}
+lc_data$title <- NULL
+```
+
+we delete the emp_title column as there are several entries for the same job title. In addition, some titles are unclear (NLP required)
+
+```{r}
+lc_data$emp_title <- NULL
+```
+
+let's examine the **loan_amnt** column
+
+```{r}
+sum(is.na(lc_data$loan_amnt))
+cor(lc_data$loan_amnt, lc_data$int_rate)
+hist(lc_data$loan_amnt, breaks = 20, main = "loan_amnt distribution", xlab = "loan_amnt", col = "lightblue", border = "black")
+
+```
+
+standardize loan_amnt
+
+```{r}
+lc_data$loan_amnt <- scale(lc_data$loan_amnt)
+```
+
+let's examine the **funded_amnt** column
+
+```{r}
+sum(is.na(lc_data$funded_amnt))
+cor(lc_data$funded_amnt, lc_data$int_rate)
+hist(lc_data$funded_amnt, breaks = 20, main = "funded_amnt distribution", xlab = "funded_amnt", col = "lightblue", border = "black")
+```
+
+as we can see, funded_amnt is almost the same as the loan_amnt column, consequently, we remove it.
+
+```{r}
+lc_data$funded_amnt <- NULL 
+```
+
+let's examine the **funded_amnt_inv** column
+
+```{r}
+sum(is.na(lc_data$funded_amnt_inv))
+cor(lc_data$funded_amnt_inv, lc_data$int_rate)
+hist(lc_data$funded_amnt_inv, breaks = 20, main = "funded_amnt_inv distribution", xlab = "funded_amnt_inv", col = "lightblue", border = "black")
+```
+
+remove funded_amnt_inv for the same reason as above
+
+```{r}
+lc_data$funded_amnt_inv <- NULL
 ```
 
 Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
