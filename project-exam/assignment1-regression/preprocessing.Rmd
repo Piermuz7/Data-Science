@@ -12,6 +12,11 @@ library(fastDummies)
 library(readr)
 library(dplyr)
 library(caret)
+library(doParallel)
+library(foreach)
+library(tree)
+library(randomForest)
+library(xgboost)
 ```
 
 set the seed for reproducibility
@@ -119,7 +124,7 @@ lc_data$emp_title <- NULL
 
 Since **emp_length** seems to be categorical, we transform it:
 ```{r}
-lc_data$emp_length <- as.factor(lc_data$emp_length)
+lc_data$emp_length <- as.numeric(as.factor(lc_data$emp_length))
 table(lc_data$emp_length)
 ```
 As we can observe, there are 40363 NAs. We can assume 40363 do not work.
@@ -142,7 +147,7 @@ ggplot(data = lc_data, mapping = aes(x=int_rate,y=home_ownership)) + geom_boxplo
 Then, we retain mortgage, own and rent:
 ```{r}
 lc_data <- lc_data %>% filter(home_ownership %in% c("MORTGAGE","OWN","RENT"))
-lc_data$home_ownership <- as.factor(lc_data$home_ownership)
+lc_data$home_ownership <- as.numeric(as.factor(lc_data$home_ownership))
 ```
 
 # application joint handling
@@ -171,7 +176,7 @@ table(lc_data$verification_status_joint)
 ```
 
 ```{r}
-lc_data$verification_status <- as.factor(lc_data$verification_status)
+lc_data$verification_status <- as.numeric(as.factor(lc_data$verification_status))
 lc_data <- lc_data %>% select(-verification_status_joint, -application_type)
 ```
 
@@ -192,13 +197,13 @@ lc_data$zip_code <- NULL
 ```
 Let's checl if other is NA or a real value for purpose. It's a real one, so we don't have to handle it.
 ```{r}
-lc_data$purpose <- as.factor(lc_data$purpose)
+lc_data$purpose <- as.numeric(as.factor(lc_data$purpose))
 ggplot(data = lc_data, mapping = aes(x=int_rate,y=purpose)) + geom_boxplot()
 ```
 Let's have a glance to the state address:
 ```{r}
 table(lc_data$addr_state)
-lc_data$addr_state <- as.factor(lc_data$addr_state)
+lc_data$addr_state <- as.numeric(as.factor(lc_data$addr_state))
 ```
 Regarding delinquency in the last 2 years, there are few NAs then remove them:
 ```{r}
@@ -245,7 +250,7 @@ lc_data <- lc_data %>%
     )
   )) %>% select(-mths_since_last_delinq)
           
-lc_data$mths_since_delinq_cat <- as.factor(lc_data$mths_since_delinq_cat)
+lc_data$mths_since_delinq_cat <- as.numeric(as.factor(lc_data$mths_since_delinq_cat))
 
 ggplot(data = lc_data, mapping = aes(x=int_rate,y=mths_since_delinq_cat))+geom_point(alpha=0.2)
 
@@ -290,11 +295,9 @@ lc_data <-lc_data %>%
     )
   )) %>% select(-mths_since_last_major_derog)
 
-lc_data$mths_since_last_major_derog_cat <-
-  as.factor(lc_data$mths_since_last_major_derog_cat)
+lc_data$mths_since_last_major_derog_cat <- as.numeric(as.factor(lc_data$mths_since_last_major_derog_cat))
 
-lc_data$mths_since_last_record_cat <-
-  as.factor(lc_data$mths_since_last_record_cat)
+lc_data$mths_since_last_record_cat <- as.numeric(as.factor(lc_data$mths_since_last_record_cat))
 ```
 
 The columns **revol_bal**,**revol_util** and **collections_12_mths_ex_med** contain only few NA values, we can remove them
@@ -306,7 +309,7 @@ lc_data <- lc_data %>%
 ```
 
 ```{r}
-lc_data$initial_list_status <- as.factor(lc_data$initial_list_status)
+lc_data$initial_list_status <- as.numeric(as.factor(lc_data$initial_list_status))
 ```
 
 remove the last credit pull for this current loan:
@@ -349,6 +352,487 @@ lc_data <-
 ```{r}
 summary(lc_data)
 ```
+
+```{r}
+
+# TODO: (parte vecchia), split 80/20 e linear regression...
+# Create indices for splitting (80% train, 20% test)
+train_indices <- createDataPartition(lc_data$int_rate, p = 0.8, list = FALSE)
+
+# Create training and testing datasets
+train_data <- lc_data[train_indices, ]
+test_data <- lc_data[-train_indices, ]
+
+#### Linear Regression ####
+#lm.fit <- lm(int_rate ~ ., data = train_data)
+
+# TODO: check collinearity and multicollinearity
+#vif(lm.fit) # there is multicollinearity
+#cor(lc_data) 
+
+# Make predictions on training and testing data
+#train_predictions <- predict(lm.fit, newdata = train_data)
+#test_predictions <- predict(lm.fit, newdata = test_data)
+
+# Evaluate model performance on training data
+#train_rmse <- sqrt(mean((train_predictions - train_data$int_rate)^2))
+#train_r_squared <- summary(lm.fit)$r.squared
+
+# Evaluate model performance on testing data
+#test_rmse <- sqrt(mean((test_predictions - test_data$int_rate)^2))
+#test_r_squared <- summary(lm.fit, test_data)$r.squared
+
+# Print evaluation metrics
+#cat("Training RMSE:", train_rmse, "\n")
+#cat("Training R-squared:", train_r_squared, "\n")
+#rmse <- sqrt(mean(lm.fit$residuals^2))
+#print(rmse)
+```
+
+```{r}
+# 1% of the total rows
+sample_train_size <- floor(0.01 * nrow(train_data))
+sample_test_size <- floor(0.01 * nrow(test_data))
+
+# Randomly select 1% of the rows
+sampled_train_data <- train_data[sample(nrow(train_data), size = sample_train_size, replace = FALSE), ]
+sampled_test_data <- test_data[sample(nrow(test_data), size = sample_test_size, replace = FALSE), ]
+
+#### Linear Regression ####
+
+lm.fit <- lm(int_rate ~ ., data = sampled_train_data)
+
+# Make predictions on the training and testing data
+lm.train_predictions <- predict(lm.fit, newdata = sampled_train_data)
+lm.test_predictions <- predict(lm.fit, newdata = sampled_test_data)
+
+# Calculate Mean Squared Error (MSE) for training and testing
+lm.train_mse <- mean((lm.train_predictions - sampled_train_data$int_rate)^2)
+lm.test_mse <- mean((lm.test_predictions - sampled_test_data$int_rate)^2)
+
+# Calculate Root Mean Squared Error (RMSE) for training and testing
+lm.train_rmse <- sqrt(lm.train_mse)
+lm.test_rmse <- sqrt(lm.test_mse)
+
+# Calculate Mean Absolute Error (MAE) for training and testing
+lm.train_mae <- mean(abs(lm.train_predictions - sampled_train_data$int_rate))
+lm.test_mae <- mean(abs(lm.test_predictions - sampled_test_data$int_rate))
+
+# Calculate R-squared (R²) for training and testing
+lm.train_r2 <- 1 - (sum((sampled_train_data$int_rate - lm.train_predictions)^2) / sum((sampled_train_data$int_rate - mean(sampled_train_data$int_rate))^2))
+lm.test_r2 <- 1 - (sum((sampled_test_data$int_rate - lm.test_predictions)^2) / sum((sampled_test_data$int_rate - mean(sampled_test_data$int_rate))^2))
+
+# Display the metrics
+cat("Training MSE:", lm.train_mse, "\n")
+cat("Testing MSE:", lm.test_mse, "\n")
+cat("Training RMSE:", lm.train_rmse, "\n")
+cat("Testing RMSE:", lm.test_rmse, "\n")
+cat("Training MAE:", lm.train_mae, "\n")
+cat("Testing MAE:", lm.test_mae, "\n")
+cat("Training R-squared (R²):", lm.train_r2, "\n")
+cat("Testing R-squared (R²):", lm.test_r2, "\n")
+
+#### Decision Trees ####
+
+# Error in tree: "factor predictors must have at most 32 levels" is thrown.
+# Basically, it becomes computationally expensive to create so many splits in your data, since you are selecting the best split out of all 2^32 (approx) possible splits.
+
+
+# Fit a decision tree model on the training data
+#tm <- tree(int_rate ~ ., data = sampled_train_data)
+
+# Make predictions on the training and testing data
+#tm.train_predictions <- predict(tm, newdata = sampled_train_data)
+#tm.test_predictions <- predict(tm, newdata = sampled_test_data)
+
+# Calculate Mean Squared Error (MSE) for training and testing
+#tm.train_mse <- mean((tm.train_predictions - sampled_train_data$int_rate)^2)
+#tm.test_mse <- mean((tm.test_predictions - sampled_test_data$int_rate)^2)
+
+# Calculate Root Mean Squared Error (RMSE) for training and testing
+#tm.train_rmse <- sqrt(tm.train_mse)
+#tm.test_rmse <- sqrt(tm.test_mse)
+
+# Calculate Mean Absolute Error (MAE) for training and testing
+#tm.train_mae <- mean(abs(tm.train_predictions - sampled_train_data$int_rate))
+#tm.test_mae <- mean(abs(tm.test_predictions - sampled_test_data$int_rate))
+
+# Calculate R-squared (R²) for training and testing
+#tm.train_r2 <- 1 - (sum((sampled_train_data$int_rate - tm.train_predictions)^2) / sum((sampled_train_data$int_rate - mean(sampled_train_data$int_rate))^2))
+#tm.test_r2 <- 1 - (sum((sampled_test_data$int_rate - tm.test_predictions)^2) / sum((sampled_test_data$int_rate - mean(sampled_test_data$int_rate))^2))
+
+# Display the metrics
+#cat("Training MSE:", tm.train_mse, "\n")
+#cat("Testing MSE:", tm.test_mse, "\n")
+#cat("Training RMSE:", tm.train_rmse, "\n")
+#cat("Testing RMSE:", tm.test_rmse, "\n")
+#cat("Training MAE:", tm.train_mae, "\n")
+#cat("Testing MAE:", tm.test_mae, "\n")
+#cat("Training R-squared (R²):", tm.train_r2, "\n")
+#cat("Testing R-squared (R²):", tm.test_r2, "\n")
+
+#### Random Forest ####
+
+# Train a Random Forest model
+rf <- randomForest(int_rate ~ ., data = sampled_train_data, ntree = 500)
+
+# Print the model summary
+print("Random Forest Model Summary:")
+print(rf)
+
+# Make predictions on the training and testing data
+rf.train_predictions <- predict(rf, newdata = sampled_train_data)
+rf.test_predictions <- predict(rf, newdata = sampled_test_data)
+
+# Calculate Mean Squared Error (MSE) for training and testing
+rf.train_mse <- mean((rf.train_predictions - sampled_train_data$int_rate)^2)
+rf.test_mse <- mean((rf.test_predictions - sampled_test_data$int_rate)^2)
+
+# Calculate Root Mean Squared Error (RMSE) for training and testing
+rf.train_rmse <- sqrt(rf.train_mse)
+rf.test_rmse <- sqrt(rf.test_mse)
+
+# Calculate Mean Absolute Error (MAE) for training and testing
+rf.train_mae <- mean(abs(rf.train_predictions - sampled_train_data$int_rate))
+rf.test_mae <- mean(abs(rf.test_predictions - sampled_test_data$int_rate))
+
+# Calculate R-squared (R²) for training and testing
+rf.train_r2 <- 1 - (sum((sampled_train_data$int_rate - rf.train_predictions)^2) / sum((sampled_train_data$int_rate - mean(sampled_train_data$int_rate))^2))
+rf.test_r2 <- 1 - (sum((sampled_test_data$int_rate - rf.test_predictions)^2) / sum((sampled_test_data$int_rate - mean(sampled_test_data$int_rate))^2))
+
+# Display the metrics
+cat("Training MSE:", rf.train_mse, "\n")
+cat("Testing MSE:", rf.test_mse, "\n")
+cat("Training RMSE:", rf.train_rmse, "\n")
+cat("Testing RMSE:", rf.test_rmse, "\n")
+cat("Training MAE:", rf.train_mae, "\n")
+cat("Testing MAE:", rf.test_mae, "\n")
+cat("Training R-squared (R²):", rf.train_r2, "\n")
+cat("Testing R-squared (R²):", rf.test_r2, "\n")
+#rf <- randomForest(int_rate~., data=train_data, ntree = 5, mtry = 3)
+#bag.boston=randomForest(medv~.,data=Boston,subset=train, mtry=13,importance =TRUE)
+#print(rf)
+
+# Set the number of cores you want to use
+#num_cores <- 6  # Adjust this number based on your system's capabilities
+
+# Register parallel backend
+#cl <- makeCluster(num_cores)
+#registerDoParallel(cl)
+
+# Assuming 'lc_data' is your dataset
+#rf_model <- foreach(ntree = rep(100, num_cores), .packages = 'randomForest') %dopar% {
+#    randomForest(int_rate ~ ., data = lc_data, ntree = ntree, mtry = sqrt(ncol(lc_data)))
+#}
+
+# After training, stop the cluster to release the cores:
+#stopCluster(cl)
+
+#### Boosting ####
+
+# Define the target variable for training and testing
+xgb.y_train <- sampled_train_data$int_rate
+xgb.y_test <- sampled_test_data$int_rate  # Use sampled_test_data for testing
+
+# Define the feature matrix for training and testing (exclude the target variable)
+xgb.X_train <- sampled_train_data[, -which(names(sampled_train_data) == 'int_rate')]
+xgb.X_test <- sampled_test_data[, -which(names(sampled_test_data) == 'int_rate')]  # Use sampled_test_data for testing
+
+# Fit a gradient boosting regression model using xgboost
+xgb <- xgboost(
+  data = as.matrix(xgb.X_train),
+  label = xgb.y_train,
+  nrounds = 100,
+  verbose = 0
+)
+
+# Make predictions on the training and testing data
+xgb.train_predictions <- predict(xgb, newdata = as.matrix(xgb.X_train))
+xgb.test_predictions <- predict(xgb, newdata = as.matrix(xgb.X_test))
+
+# Calculate Mean Squared Error (MSE) for training and testing
+xgb.train_mse <- mean((xgb.train_predictions - xgb.y_train)^2)
+xgb.test_mse <- mean((xgb.test_predictions - xgb.y_test)^2)
+
+# Calculate Root Mean Squared Error (RMSE) for training and testing
+xgb.train_rmse <- sqrt(xgb.train_mse)
+xgb.test_rmse <- sqrt(xgb.test_mse)
+
+# Calculate Mean Absolute Error (MAE) for training and testing
+xgb.train_mae <- mean(abs(xgb.train_predictions - xgb.y_train))
+xgb.test_mae <- mean(abs(xgb.test_predictions - xgb.y_test))
+
+# Calculate R-squared (R²) for training and testing
+xgb.train_r2 <- 1 - (sum((xgb.y_train - xgb.train_predictions)^2) / sum((xgb.y_train - mean(xgb.y_train))^2))
+xgb.test_r2 <- 1 - (sum((xgb.y_test - xgb.test_predictions)^2) / sum((xgb.y_test - mean(xgb.y_test))^2))
+
+# Display the metrics
+cat("Training MSE:", xgb.train_mse, "\n")
+cat("Testing MSE:", xgb.test_mse, "\n")
+cat("Training RMSE:", xgb.train_rmse, "\n")
+cat("Testing RMSE:", xgb.test_rmse, "\n")
+cat("Training MAE:", xgb.train_mae, "\n")
+cat("Testing MAE:", xgb.test_mae, "\n")
+cat("Training R-squared (R²):", xgb.train_r2, "\n")
+cat("Testing R-squared (R²):", xgb.test_r2, "\n")
+```
+Following, a scatter plot of actual vs predicted values for each model is plot.
+This plot helps us visualize how well each model's predictions align with the actual data points.
+```{r}
+# Create a scatter plot function
+create_scatter_plot <- function(actual_values, predicted_values, model_name) {
+  model_comparison_data <- data.frame(
+    Actual = actual_values,
+    Predicted = predicted_values
+  )
+  
+  scatter_plot <- ggplot(model_comparison_data, aes(x = Actual, y = Predicted)) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +  # Add a diagonal reference line
+    labs(x = "Actual Values", y = "Predicted Values", title = model_name) +
+    theme_minimal()
+  
+  return(scatter_plot)
+}
+
+# Create scatter plots for each model
+lm_scatter_plot <- create_scatter_plot(
+  actual_values = sampled_train_data$int_rate,
+  predicted_values = lm.train_predictions,
+  model_name = "Linear Regression"
+)
+
+rf_scatter_plot <- create_scatter_plot(
+  actual_values = sampled_train_data$int_rate,
+  predicted_values = rf.train_predictions,
+  model_name = "Random Forest"
+)
+
+xgb_scatter_plot <- create_scatter_plot(
+  actual_values = xgb.y_train,
+  predicted_values = xgb.train_predictions,
+  model_name = "XGBoost"
+)
+
+# Display the scatter plots separately
+print(lm_scatter_plot)
+print(rf_scatter_plot)
+print(xgb_scatter_plot)
+```
+Residual plots can help identify patterns in prediction errors and assess whether the assumptions of linear regression (if applicable) are met.
+```{r}
+# Create a residual plot function
+create_residual_plot <- function(actual_values, predicted_values, model_name) {
+  residuals <- actual_values - predicted_values
+  residual_data <- data.frame(
+    Predicted = predicted_values,
+    Residuals = residuals
+  )
+  
+  residual_plot <- ggplot(residual_data, aes(x = Predicted, y = Residuals)) +
+    geom_point() +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "red") +  # Red horizontal reference line
+    labs(x = "Predicted Values", y = "Residuals", title = paste("Residual Plot -", model_name)) +
+    theme_minimal()
+  
+  return(residual_plot)
+}
+
+# Create residual plots for each model
+lm_residual_plot <- create_residual_plot(
+  actual_values = sampled_train_data$int_rate,
+  predicted_values = lm.train_predictions,
+  model_name = "Linear Regression"
+)
+
+rf_residual_plot <- create_residual_plot(
+  actual_values = sampled_train_data$int_rate,
+  predicted_values = rf.train_predictions,
+  model_name = "Random Forest"
+)
+
+xgb_residual_plot <- create_residual_plot(
+  actual_values = xgb.y_train,
+  predicted_values = xgb.train_predictions,
+  model_name = "XGBoost"
+)
+
+# Display the residual plots separately
+print(lm_residual_plot)
+print(rf_residual_plot)
+print(xgb_residual_plot)
+```
+This visualization can help you compare the distribution of prediction errors across models.
+```{r}
+# Create a density plot function for residuals
+create_residual_density_plot <- function(actual_values, predicted_values, model_name) {
+  residuals <- actual_values - predicted_values
+  residual_data <- data.frame(Residuals = residuals)
+  
+  density_plot <- ggplot(residual_data, aes(x = Residuals)) +
+    geom_density(fill = "blue", color = "black", alpha = 0.7) +
+    labs(x = "Residuals", y = "Density", title = paste("Residual Density Plot -", model_name)) +
+    theme_minimal()
+  
+  return(density_plot)
+}
+
+# Create density plots for residuals for each model
+lm_residual_density_plot <- create_residual_density_plot(
+  actual_values = sampled_train_data$int_rate,
+  predicted_values = lm.train_predictions,
+  model_name = "Linear Regression"
+)
+
+rf_residual_density_plot <- create_residual_density_plot(
+  actual_values = sampled_train_data$int_rate,
+  predicted_values = rf.train_predictions,
+  model_name = "Random Forest"
+)
+
+xgb_residual_density_plot <- create_residual_density_plot(
+  actual_values = xgb.y_train,
+  predicted_values = xgb.train_predictions,
+  model_name = "XGBoost"
+)
+
+# Display the density plots separately
+print(lm_residual_density_plot)
+print(rf_residual_density_plot)
+print(xgb_residual_density_plot)
+```
+For each model a bar chart that displays the R-squared (coefficient of determination) values is created.
+R-squared measures the proportion of variance in the target variable explained by the model. Higher R-squared values indicate better model fit.
+```{r}
+# Create a data frame with R-squared values for each model
+model_names <- c("Linear Regression", "Random Forest", "XGBoost")
+r_squared_values <- c(
+  lm.train_r2,
+  rf.train_r2,
+  xgb.train_r2
+)
+
+r_squared_data <- data.frame(Model = factor(model_names),
+                              R_squared = r_squared_values)
+
+# Create the R-squared comparison bar chart
+r_squared_bar_chart <- ggplot(r_squared_data, aes(x = Model, y = R_squared, fill = Model)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Model", y = "R-squared (R²)", title = "R-squared Comparison") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Display the R-squared comparison bar chart
+print(r_squared_bar_chart)
+```
+A bar chart that compares the MAE or RMSE values, is generated for each model.
+These metrics quantify the average prediction errors of each model, and lower values are preferred.
+```{r}
+# Create a data frame with MAE or RMSE values for each model
+model_names <- c("Linear Regression", "Random Forest", "XGBoost")
+mae_values <- c(
+  lm.train_mae,
+  rf.train_mae,
+  xgb.train_mae
+)
+rmse_values <- c(
+  lm.train_rmse,
+  rf.train_rmse,
+  xgb.train_rmse
+)
+
+# Choose either MAE or RMSE by uncommenting the respective lines
+# error_values <- mae_values  # Uncomment for MAE comparison
+error_values <- rmse_values  # Uncomment for RMSE comparison
+
+error_data <- data.frame(Model = factor(model_names),
+                         Error_Type = rep(c("MAE", "RMSE"), each = length(model_names)),
+                         Error_Value = rep(error_values, times = 2))
+
+# Create the MAE or RMSE comparison bar chart
+error_bar_chart <- ggplot(error_data, aes(x = Model, y = Error_Value, fill = Error_Type)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Model", y = "Error Value", title = "MAE or RMSE Comparison") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Display the MAE or RMSE comparison bar chart
+print(error_bar_chart)
+```
+
+```{r}
+#### Random Forest Feature Importance Plot ####
+
+# Extract feature importance values from the Random Forest model
+rf_feature_importance <- importance(rf, type = 1)  # Type 1 for Mean Decrease in Accuracy
+
+# Check if feature importance values are available
+if (length(rf_feature_importance) == 0) {
+  cat("No feature importance values available for the Random Forest model.\n")
+} else {
+  # Create a data frame for Random Forest feature importance
+  rf_feature_data <- data.frame(
+    Feature = row.names(rf_feature_importance),
+    Importance = rf_feature_importance
+  )
+
+  # Convert the "Importance" column to numeric
+  rf_feature_data$Importance <- as.numeric(rf_feature_data$Importance)
+
+  # Sort the data frame by importance in descending order
+  rf_feature_data <- rf_feature_data[order(-rf_feature_data$Importance), ]
+
+  # Create the Random Forest feature importance plot
+  rf_feature_plot <- ggplot(rf_feature_data, aes(x = reorder(Feature, Importance), y = Importance)) +
+    geom_bar(stat = "identity", fill = "blue") +
+    labs(x = "Feature", y = "Importance", title = "Random Forest Feature Importance") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+  # Display the Random Forest feature importance plot
+  print(rf_feature_plot)
+}
+```
+Learning curve using RMSE and R^2:
+```{r}
+# Create a data frame with RMSE and R-squared values for each model and sample size
+model_names <- c("Linear Regression", "Random Forest", "XGBoost")
+sample_sizes <- seq(10, nrow(sampled_train_data), by = 10)  # Adjust the sample sizes as needed
+
+# Create data frames with RMSE and R-squared values for each model
+rmse_data <- data.frame(
+  Model = rep(model_names, each = length(sample_sizes)),
+  Sample_Size = rep(sample_sizes, times = length(model_names)),
+  RMSE = c(
+    lm.train_rmse, rf.train_rmse, xgb.train_rmse
+  )
+)
+
+r_squared_data <- data.frame(
+  Model = rep(model_names, each = length(sample_sizes)),
+  Sample_Size = rep(sample_sizes, times = length(model_names)),
+  R_squared = c(
+    lm.train_r2, rf.train_r2, xgb.train_r2
+  )
+)
+
+# Create RMSE learning curve
+rmse_curve <- ggplot(rmse_data, aes(x = Sample_Size, y = RMSE, color = Model)) +
+  geom_line() +
+  labs(x = "Sample Size", y = "RMSE", title = "RMSE Learning Curve") +
+  theme_minimal()
+
+# Create R-squared learning curve
+r_squared_curve <- ggplot(r_squared_data, aes(x = Sample_Size, y = R_squared, color = Model)) +
+  geom_line() +
+  labs(x = "Sample Size", y = "R-squared", title = "R-squared Learning Curve") +
+  theme_minimal()
+
+# Display the RMSE and R-squared learning curves
+print(rmse_curve)
+print(r_squared_curve)
+```
+
 
 
 Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
