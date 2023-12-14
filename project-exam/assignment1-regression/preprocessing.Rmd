@@ -15,7 +15,7 @@ library(caret)
 library(doParallel)
 library(foreach)
 library(tree)
-library(randomForest)
+library(ranger)
 library(xgboost)
 ```
 
@@ -398,6 +398,9 @@ sample_test_size <- floor(0.01 * nrow(test_data))
 sampled_train_data <- train_data[sample(nrow(train_data), size = sample_train_size, replace = FALSE), ]
 sampled_test_data <- test_data[sample(nrow(test_data), size = sample_test_size, replace = FALSE), ]
 
+sampled_train_data <- train_data
+sampled_test_data <- test_data
+
 #### Linear Regression ####
 
 lm.fit <- lm(int_rate ~ ., data = sampled_train_data)
@@ -474,31 +477,31 @@ cat("Testing R-squared (R²):", lm.test_r2, "\n")
 #### Random Forest ####
 
 # Train a Random Forest model
-rf <- randomForest(int_rate ~ ., data = sampled_train_data, ntree = 500)
+rf <- ranger(formula = int_rate ~ ., data = sampled_train_data, num.trees = 500,verbose=TRUE)
 
 # Print the model summary
 print("Random Forest Model Summary:")
 print(rf)
 
 # Make predictions on the training and testing data
-rf.train_predictions <- predict(rf, newdata = sampled_train_data)
-rf.test_predictions <- predict(rf, newdata = sampled_test_data)
+rf.train_predictions <- predict(rf, data = sampled_train_data)
+rf.test_predictions <- predict(rf, data = sampled_test_data)
 
 # Calculate Mean Squared Error (MSE) for training and testing
-rf.train_mse <- mean((rf.train_predictions - sampled_train_data$int_rate)^2)
-rf.test_mse <- mean((rf.test_predictions - sampled_test_data$int_rate)^2)
+rf.train_mse <- mean((rf.train_predictions$predictions - sampled_train_data$int_rate)^2)
+rf.test_mse <- mean((rf.test_predictions$predictions - sampled_test_data$int_rate)^2)
 
 # Calculate Root Mean Squared Error (RMSE) for training and testing
 rf.train_rmse <- sqrt(rf.train_mse)
 rf.test_rmse <- sqrt(rf.test_mse)
 
 # Calculate Mean Absolute Error (MAE) for training and testing
-rf.train_mae <- mean(abs(rf.train_predictions - sampled_train_data$int_rate))
-rf.test_mae <- mean(abs(rf.test_predictions - sampled_test_data$int_rate))
+rf.train_mae <- mean(abs(rf.train_predictions$predictions - sampled_train_data$int_rate))
+rf.test_mae <- mean(abs(rf.test_predictions$predictions - sampled_test_data$int_rate))
 
 # Calculate R-squared (R²) for training and testing
-rf.train_r2 <- 1 - (sum((sampled_train_data$int_rate - rf.train_predictions)^2) / sum((sampled_train_data$int_rate - mean(sampled_train_data$int_rate))^2))
-rf.test_r2 <- 1 - (sum((sampled_test_data$int_rate - rf.test_predictions)^2) / sum((sampled_test_data$int_rate - mean(sampled_test_data$int_rate))^2))
+rf.train_r2 <- 1 - (sum((sampled_train_data$int_rate - rf.train_predictions$predictions)^2) / sum((sampled_train_data$int_rate - mean(sampled_train_data$int_rate))^2))
+rf.test_r2 <- 1 - (sum((sampled_test_data$int_rate - rf.test_predictions$predictions)^2) / sum((sampled_test_data$int_rate - mean(sampled_test_data$int_rate))^2))
 
 # Display the metrics
 cat("Training MSE:", rf.train_mse, "\n")
@@ -576,7 +579,7 @@ cat("Testing MAE:", xgb.test_mae, "\n")
 cat("Training R-squared (R²):", xgb.train_r2, "\n")
 cat("Testing R-squared (R²):", xgb.test_r2, "\n")
 ```
-Following, a scatter plot of actual vs predicted values for each model is plot.
+Following, a scatter plot of actual vs predicted training values for each model is plot.
 This plot helps us visualize how well each model's predictions align with the actual data points.
 ```{r}
 # Create a scatter plot function
@@ -589,7 +592,7 @@ create_scatter_plot <- function(actual_values, predicted_values, model_name) {
   scatter_plot <- ggplot(model_comparison_data, aes(x = Actual, y = Predicted)) +
     geom_point() +
     geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +  # Add a diagonal reference line
-    labs(x = "Actual Values", y = "Predicted Values", title = model_name) +
+    labs(x = "Actual Training Values", y = "Predicted Training Values", title = model_name) +
     theme_minimal()
   
   return(scatter_plot)
@@ -604,7 +607,7 @@ lm_scatter_plot <- create_scatter_plot(
 
 rf_scatter_plot <- create_scatter_plot(
   actual_values = sampled_train_data$int_rate,
-  predicted_values = rf.train_predictions,
+  predicted_values = rf.train_predictions$predictions,
   model_name = "Random Forest"
 )
 
@@ -619,6 +622,50 @@ print(lm_scatter_plot)
 print(rf_scatter_plot)
 print(xgb_scatter_plot)
 ```
+Following, a scatter plot of actual vs predicted testing values for each model is plot.
+This plot helps us visualize how well each model's predictions align with the actual data points.
+```{r}
+# Create a scatter plot function
+create_scatter_plot <- function(actual_values, predicted_values, model_name) {
+  model_comparison_data <- data.frame(
+    Actual = actual_values,
+    Predicted = predicted_values
+  )
+  
+  scatter_plot <- ggplot(model_comparison_data, aes(x = Actual, y = Predicted)) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +  # Add a diagonal reference line
+    labs(x = "Actual Testing Values", y = "Predicted Testing Values", title = model_name) +
+    theme_minimal()
+  
+  return(scatter_plot)
+}
+
+# Create scatter plots for each model
+lm_scatter_plot <- create_scatter_plot(
+  actual_values = sampled_test_data$int_rate,
+  predicted_values = lm.test_predictions,
+  model_name = "Linear Regression"
+)
+
+rf_scatter_plot <- create_scatter_plot(
+  actual_values = sampled_test_data$int_rate,
+  predicted_values = rf.test_predictions$predictions,
+  model_name = "Random Forest"
+)
+
+xgb_scatter_plot <- create_scatter_plot(
+  actual_values = xgb.y_test,
+  predicted_values = xgb.test_predictions,
+  model_name = "XGBoost"
+)
+
+# Display the scatter plots separately
+print(lm_scatter_plot)
+print(rf_scatter_plot)
+print(xgb_scatter_plot)
+```
+
 Residual plots can help identify patterns in prediction errors and assess whether the assumptions of linear regression (if applicable) are met.
 ```{r}
 # Create a residual plot function
@@ -647,7 +694,7 @@ lm_residual_plot <- create_residual_plot(
 
 rf_residual_plot <- create_residual_plot(
   actual_values = sampled_train_data$int_rate,
-  predicted_values = rf.train_predictions,
+  predicted_values = rf.train_predictions$predictions,
   model_name = "Random Forest"
 )
 
@@ -686,7 +733,7 @@ lm_residual_density_plot <- create_residual_density_plot(
 
 rf_residual_density_plot <- create_residual_density_plot(
   actual_values = sampled_train_data$int_rate,
-  predicted_values = rf.train_predictions,
+  predicted_values = rf.train_predictions$predictions,
   model_name = "Random Forest"
 )
 
@@ -795,6 +842,7 @@ if (length(rf_feature_importance) == 0) {
 ```
 Learning curve using RMSE and R^2:
 ```{r}
+# TODO: change the x-axes
 # Create a data frame with RMSE and R-squared values for each model and sample size
 model_names <- c("Linear Regression", "Random Forest", "XGBoost")
 sample_sizes <- seq(10, nrow(sampled_train_data), by = 10)  # Adjust the sample sizes as needed
