@@ -419,7 +419,8 @@ sampled_test_data <- test_data[sample(nrow(test_data), size = sample_test_size, 
 
 sampled_train_data <- train_data
 sampled_test_data <- test_data
-
+```
+```{r}
 #### Linear Regression ####
 
 lm.fit <- lm(int_rate ~ ., data = sampled_train_data)
@@ -466,7 +467,36 @@ results <- data.frame()
 # Define the number of folds for cross-validation
 num_folds <- 10
 folds <- createFolds(sampled_train_data$int_rate, k = num_folds, list = TRUE)
+```
+Lasso
+```{r}
+m_LASSO <- glmnet(predictors, target, alpha = 1)
 
+dim(coef(m_LASSO))
+# We have only 69 rows, because glmnet has a stop criterion, see help.
+
+m_LASSO  
+# We observe that some of the coefficients are set to zero (Df=0, %Dev=0)
+
+plot(m_LASSO, label=TRUE)
+# Also here we can see that some of the coefficients are set to zero.
+
+
+(cv_LASSO <- cv.glmnet(predictors, target, alpha = 1) )
+plot(cv_LASSO)
+
+(best_lambda_LASSO <- cv_LASSO$lambda.min) 
+# best lamda is very small, but lambda.1se is considerably bigger
+coef(m_LASSO, s=best_lambda_LASSO) 
+# for small lambda almost all coefficients are included
+coef(m_LASSO, s=cv_LASSO$lambda.1se) 
+# We can try again with lambda.1se
+coef(m_ridge, s=cv_ridge$lambda.min) 
+# compare with ridge
+```
+
+K fold
+```{r}
 # Perform k-fold cross-validation
 for(i in seq_along(folds)) {
   # Split the data into training and testing for the current fold
@@ -510,7 +540,10 @@ for(i in seq_along(folds)) {
 print(models)
 print(results)
 
+```
 
+Decision Tree
+```{r}
 #### Decision Trees ####
 
 # Error in tree: "factor predictors must have at most 32 levels" is thrown.
@@ -549,7 +582,10 @@ print(results)
 #cat("Testing MAE:", tm.test_mae, "\n")
 #cat("Training R-squared (R²):", tm.train_r2, "\n")
 #cat("Testing R-squared (R²):", tm.test_r2, "\n")
+```
 
+Random Forest
+```{r}
 #### Random Forest ####
 
 # Train a Random Forest model
@@ -606,7 +642,9 @@ cat("Testing R-squared (R²):", rf.test_r2, "\n")
 
 # After training, stop the cluster to release the cores:
 #stopCluster(cl)
-
+```
+Boosting
+```{r}
 #### Boosting ####
 
 # Define the target variable for training and testing
