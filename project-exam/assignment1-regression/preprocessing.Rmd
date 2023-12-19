@@ -5,27 +5,31 @@ output: html_notebook
 
 # Data Pre-processing
 
-load needed libraries
+Load needed libraries
 
 ```{r}
 library(fastDummies)
 library(readr)
+library(ggplot2)
 library(dplyr)
 library(caret)
-library(doParallel)
-library(foreach)
+library(glmnet)
+library(boot)
 library(tree)
 library(ranger)
 library(xgboost)
+library(gbm)
+library(vip)
+library(ISLR)
 ```
 
-set the seed for reproducibility
+Set the seed for reproducibility
 
 ```{r}
-set.seed(42)
+set.seed(1)
 ```
 
-load the dataset
+Load the dataset
 
 ```{r}
 original_lc_data <- read.csv("LCdata.csv",sep = ";")
@@ -48,17 +52,30 @@ lc_data <- subset(lc_data, select = -c(collection_recovery_fee, installment, iss
 summary(lc_data)
 ```
 
-eliminate the columns with the id since they are not useful
+First we delete the columns which aren't useful for our prediction
 
 ```{r}
 lc_data$id <- NULL
 lc_data$member_id <- NULL
+lc_data$zip_code <- NULL
+lc_data$url <- NULL
+```
+Looks like **policy_code** contains just value equal to 1, it can be removed
+```{r}
+lc_data$policy_code <- NULL
+```
+Remove additional columns which are related to the historical data
+```{r}
+lc_data$last_credit_pull_d <- NULL
 ```
 
-we delete the title column because NLP is needed
+Then we delete the columns which can't be converted to categorical and require NLP
 
 ```{r}
 lc_data$title <- NULL
+lc_data$desc <- NULL
+lc_data$emp_title <- NULL
+
 ```
 
 let's examine the **loan_amnt** column
@@ -67,13 +84,13 @@ let's examine the **loan_amnt** column
 sum(is.na(lc_data$loan_amnt))
 cor(lc_data$loan_amnt, lc_data$int_rate)
 hist(lc_data$loan_amnt, breaks = 20, main = "loan_amnt distribution", xlab = "loan_amnt", col = "lightblue", border = "black")
-
+ggplot(data = lc_data, mapping = aes(x=int_rate,y=loan_amnt)) + geom_boxplot()
 ```
 
-standardize loan_amnt
+standardize **loan_amnt**
 
 ```{r}
-lc_data$loan_amnt <- scale(lc_data$loan_amnt)
+#lc_data$loan_amnt <- scale(lc_data$loan_amnt)
 ```
 
 let's examine the **funded_amnt** column
@@ -84,7 +101,7 @@ cor(lc_data$funded_amnt, lc_data$int_rate)
 hist(lc_data$funded_amnt, breaks = 20, main = "funded_amnt distribution", xlab = "funded_amnt", col = "lightblue", border = "black")
 ```
 
-as we can see, funded_amnt is almost the same as the loan_amnt column, consequently, we remove it.
+as we can see, **funded_amnt** is almost the same as the **loan_amnt** column, consequently, we remove it.
 
 ```{r}
 lc_data$funded_amnt <- NULL 
@@ -98,13 +115,13 @@ cor(lc_data$funded_amnt_inv, lc_data$int_rate)
 hist(lc_data$funded_amnt_inv, breaks = 20, main = "funded_amnt_inv distribution", xlab = "funded_amnt_inv", col = "lightblue", border = "black")
 ```
 
-remove funded_amnt_inv for the same reason as above
+remove **funded_amnt_inv** for the same reason as above
 
 ```{r}
 lc_data$funded_amnt_inv <- NULL
 ```
 
-let's see the int_rate distribution.
+let's see the **int_rate** distribution.
 ```{r}
 hist(lc_data$int_rate, breaks = 20, main = "int_rate distribution", xlab = "int_rate", col = "lightblue", border = "black")
 ```
@@ -112,20 +129,9 @@ Standardize int rate:
 ```{r}
 #lc_data$int_rate <- scale(lc_data$int_rate)
 ```
-we delete the emp_title column as there are several entries for the same job title and because there are too many different values for one-hot encoding. In addition, some titles are unclear (NLP required)
+we delete the **emp_title** column as there are several entries for the same job title and because there are too many different values for one-hot encoding. In addition, some titles are unclear (NLP required)
 ```{r}
 n_distinct(lc_data$emp_title)
-```
-Then remove it:
-```{r}
-lc_data$emp_title <- NULL
-```
-
-
-Since **emp_length** seems to be categorical, we transform it:
-```{r}
-lc_data$emp_length <- as.numeric(as.factor(lc_data$emp_length))
-table(lc_data$emp_length)
 ```
 As we can observe, there are 40363 NAs. We can assume 40363 do not work.
 ```{r}
@@ -137,11 +143,21 @@ barplot(table(lc_data$emp_length),
         cex.names = 0.6)  # The size of the main title
 ```
 
+Since **emp_length** seems to be categorical, we transform it to as a factor and then as numeric.
+The conversion to numeric is needed for supporting the XGBoost 
+```{r}
+lc_data$emp_length <- as.factor(lc_data$emp_length)
+ggplot(data = lc_data, mapping = aes(x=int_rate,y=emp_length)) + geom_boxplot()
+lc_data$emp_length <- as.numeric(lc_data$emp_length)
+```
+
+
 Cleaning of **home_ownership**:
 
 During the data cleaning phase, our analysis revealed that the variable "home_ownership" does not show a distinct correlation with interest rates. Specifically, among the categories, "ANY" and "OTHER" contain 2 and 154 cases, respectively, while the "NONE" category comprises 39 cases. Although the "NONE" category appears to demonstrate a higher interest rate compared to others, the limited sample size of 39 cases raises doubts about the reliability of this observation. Notably, the "NONE" category might pertain to individuals experiencing homelessness, prompting ethical concerns about loan provision to this demographic.
 
 ```{r}
+table(lc_data$home_ownership)
 ggplot(data = lc_data, mapping = aes(x=int_rate,y=home_ownership)) + geom_boxplot()
 ```
 Then, we retain mortgage, own and rent:
@@ -180,30 +196,19 @@ lc_data$verification_status <- as.numeric(as.factor(lc_data$verification_status)
 lc_data <- lc_data %>% select(-verification_status_joint, -application_type)
 ```
 
-# useless columns
-remove the description:
-```{r}
-lc_data$desc <- NULL
-```
 
-remove the url:
-```{r}
-lc_data$url <- NULL
-```
-
-remove the zip code:
-```{r}
-lc_data$zip_code <- NULL
-```
 Let's checl if other is NA or a real value for purpose. It's a real one, so we don't have to handle it.
 ```{r}
-lc_data$purpose <- as.numeric(as.factor(lc_data$purpose))
+lc_data$purpose <- as.factor(lc_data$purpose)
 ggplot(data = lc_data, mapping = aes(x=int_rate,y=purpose)) + geom_boxplot()
+lc_data$purpose <- as.numeric(lc_data$purpose)
 ```
 Let's have a glance to the state address:
 ```{r}
 table(lc_data$addr_state)
-lc_data$addr_state <- as.numeric(as.factor(lc_data$addr_state))
+lc_data$addr_state <- as.factor(lc_data$addr_state)
+ggplot(data = lc_data, mapping = aes(x=int_rate,y=addr_state)) + geom_boxplot()
+lc_data$addr_state <- as.numeric(lc_data$addr_state)
 ```
 Regarding delinquency in the last 2 years, there are few NAs then remove them:
 ```{r}
@@ -211,24 +216,6 @@ lc_data <- lc_data %>%
     filter(!(is.na(delinq_2yrs)))
 ```
 
-Transform the 2 following categorical date in unix time. Moreover, we remove 25 NAs from earliest_cr_line and 45 NAs from last_credit_pull_d.
-
-```{r}
-lc_data <- lc_data %>% 
-    filter(!(is.na(earliest_cr_line)))
-
-# function to replace dates with unix time
-to_unix_time <- function(date) {
-  tmp <- paste("01", date, sep="-")
-  return (as.numeric(as.POSIXct(tmp, format="%d-%b-%Y", tz="UTC")))
-}
-
-# map dates to unix time
-lc_data$earliest_cr_line <- apply(lc_data, 1, function(row) to_unix_time(row["earliest_cr_line"]))
-
-# standardize them
-lc_data$earliest_cr_line <- scale(lc_data$earliest_cr_line)
-```
 
 ```{r}
 lc_data <- lc_data %>%
@@ -250,12 +237,12 @@ lc_data <- lc_data %>%
     )
   )) %>% select(-mths_since_last_delinq)
           
-lc_data$mths_since_delinq_cat <- as.numeric(as.factor(lc_data$mths_since_delinq_cat))
-
-ggplot(data = lc_data, mapping = aes(x=int_rate,y=mths_since_delinq_cat))+geom_point(alpha=0.2)
-
+lc_data$mths_since_delinq_cat <- as.factor(lc_data$mths_since_delinq_cat)
 ggplot(data = lc_data, mapping = aes(x=int_rate,y=mths_since_delinq_cat))+geom_boxplot()
+lc_data$mths_since_delinq_cat <- as.numeric(lc_data$mths_since_delinq_cat)
+```
 
+```{r}
 lc_data <- lc_data %>%
   mutate(mths_since_last_record_cat = ifelse(
     is.na(mths_since_last_record) == TRUE,
@@ -275,7 +262,12 @@ lc_data <- lc_data %>%
     )
   )) %>% select(-mths_since_last_record)
 
+lc_data$mths_since_last_record_cat <- as.factor(lc_data$mths_since_last_record_cat)
+ggplot(data = lc_data, mapping = aes(x=int_rate,y=mths_since_last_record_cat))+geom_boxplot()
+lc_data$mths_since_last_record_cat <- as.numeric(lc_data$mths_since_last_record_cat)
+```
 
+```{r}
 lc_data <-lc_data %>% 
   mutate(mths_since_last_major_derog_cat =  ifelse(
     is.na(mths_since_last_major_derog) == TRUE,
@@ -295,39 +287,36 @@ lc_data <-lc_data %>%
     )
   )) %>% select(-mths_since_last_major_derog)
 
-lc_data$mths_since_last_major_derog_cat <- as.numeric(as.factor(lc_data$mths_since_last_major_derog_cat))
+lc_data$mths_since_last_major_derog_cat <- as.factor(lc_data$mths_since_last_major_derog_cat)
+ggplot(data = lc_data, mapping = aes(x=int_rate,y=mths_since_last_major_derog_cat))+geom_boxplot()
+lc_data$mths_since_last_major_derog_cat <- as.numeric(lc_data$mths_since_last_major_derog_cat)
 
-lc_data$mths_since_last_record_cat <- as.numeric(as.factor(lc_data$mths_since_last_record_cat))
 ```
 
-The columns **revol_bal**,**revol_util** and **collections_12_mths_ex_med** contain only few NA values, we can remove them
+```{r}
+lc_data$initial_list_status <- as.factor(lc_data$initial_list_status)
+ggplot(data = lc_data, mapping = aes(x=int_rate,y=initial_list_status))+geom_boxplot()
+lc_data$initial_list_status <- as.numeric(lc_data$initial_list_status)
+```
+
+Let's check which columns still have null values
+```{r}
+colSums(is.na(lc_data))
+```
+The columns **revol_bal** and **revol_util** contain only few NA values, those values can't be replaced with 0, then we filter the values which are not NA
 ```{r}
 lc_data <- lc_data %>% 
     filter(!(is.na(revol_bal))) %>% 
-        filter(!(is.na(revol_util))) %>% 
-        filter(!(is.na(collections_12_mths_ex_med)))
+        filter(!(is.na(revol_util)))
 ```
 
+
+Let's check which columns still have null values
 ```{r}
-lc_data$initial_list_status <- as.numeric(as.factor(lc_data$initial_list_status))
+names(which(colSums(is.na(lc_data)) > 0))
 ```
 
-remove the last credit pull for this current loan:
-```{r}
-lc_data$last_credit_pull_d <- NULL
-lc_data$policy_code <- NULL
-```
-
-```{r}
-
-lc_data <- lc_data %>% mutate(
-    tot_coll_amt = ifelse(is.na(tot_coll_amt)== TRUE,0, tot_coll_amt))
-ggplot(data = lc_data, mapping = aes(x=int_rate,y=tot_coll_amt))+geom_point(alpha=0.2)
-
-ggplot(data = lc_data, mapping = aes(x=int_rate,y=tot_coll_amt, group = 1))+geom_boxplot()
-```
-
-
+Replace null values with 0 where is possible
 ```{r}
 lc_data <-
   lc_data %>%
@@ -346,11 +335,41 @@ lc_data <-
   mutate(inq_fi = ifelse(is.na(inq_fi) == TRUE, 0, inq_fi)) %>%
   mutate(total_cu_tl = ifelse(is.na(total_cu_tl) == TRUE, 0, total_cu_tl)) %>%
   mutate(inq_last_12m = ifelse(is.na(inq_last_12m) == TRUE, 0, inq_last_12m)) %>%
-  mutate(open_rv_24m = ifelse(is.na(open_rv_24m) == TRUE, 0, open_rv_24m))
+  mutate(open_rv_24m = ifelse(is.na(open_rv_24m) == TRUE, 0, open_rv_24m)) %>%
+  mutate(tot_coll_amt = ifelse(is.na(tot_coll_amt)== TRUE,0, tot_coll_amt)) %>%
+  mutate(collections_12_mths_ex_med = ifelse(is.na(collections_12_mths_ex_med)== TRUE,0, collections_12_mths_ex_med))
+```
+
+**earliest_cr_line** contains the month the borrower's earliest reported credit line was opened.
+Even if this date consists only on month and year, still there are too many unique values.
+We could transform the dates in to a numerical value, by converting them from date into Unix Time.
+This unit measures time by the number of seconds that have elapsed since 00:00:00 UTC on 1 January 1970.
+Since this column doesn't contain the day number, we take as a reference the first day of the month.
+
+```{r}
+lc_data <- lc_data %>% 
+    filter(!(is.na(earliest_cr_line)))
+
+# function to replace dates with unix time
+to_unix_time <- function(date) {
+  tmp <- paste("01", date, sep="-")
+  return (as.numeric(as.POSIXct(tmp, format="%d-%b-%Y", tz="UTC")))
+}
+
+# map dates to unix time
+lc_data$earliest_cr_line <- apply(lc_data, 1, function(row) to_unix_time(row["earliest_cr_line"]))
+
+# standardize them
+#lc_data$earliest_cr_line <- scale(lc_data$earliest_cr_line)
 ```
 
 ```{r}
 summary(lc_data)
+```
+
+
+```{r}
+#round(cor(lc_data),2)
 ```
 
 ```{r}
@@ -435,6 +454,63 @@ cat("Testing MAE:", lm.test_mae, "\n")
 cat("Training R-squared (R²):", lm.train_r2, "\n")
 cat("Testing R-squared (R²):", lm.test_r2, "\n")
 
+#### Linear Regresion applying Cross Validation with k=2 to k=10  ####
+
+
+# Assuming 'sampled_train_data' is your training data set
+
+# Initialize lists to store models and their results
+models <- list()
+results <- data.frame()
+
+# Define the number of folds for cross-validation
+num_folds <- 10
+folds <- createFolds(sampled_train_data$int_rate, k = num_folds, list = TRUE)
+
+# Perform k-fold cross-validation
+for(i in seq_along(folds)) {
+  # Split the data into training and testing for the current fold
+  train_indices <- folds[[i]]
+  test_indices <- setdiff(seq_len(nrow(sampled_train_data)), train_indices)
+  
+  train_data_fold <- sampled_train_data[train_indices, ]
+  test_data_fold <- sampled_train_data[test_indices, ]
+  
+  # Fit the model on the training fold
+  lm_model <- lm(int_rate ~ ., data = train_data_fold)
+  models[[i]] <- lm_model  # Store the model
+  
+  # Make predictions on the training and testing fold
+  train_predictions <- predict(lm_model, newdata = train_data_fold)
+  test_predictions <- predict(lm_model, newdata = test_data_fold)
+  
+  # Calculate metrics for training fold
+  train_mse <- mean((train_predictions - train_data_fold$int_rate)^2)
+  train_rmse <- sqrt(train_mse)
+  train_mae <- mean(abs(train_predictions - train_data_fold$int_rate))
+  train_r2 <- summary(lm_model)$r.squared
+  
+  # Calculate metrics for testing fold
+  test_mse <- mean((test_predictions - test_data_fold$int_rate)^2)
+  test_rmse <- sqrt(test_mse)
+  test_mae <- mean(abs(test_predictions - test_data_fold$int_rate))
+  test_r2 <- 1 - (sum((test_data_fold$int_rate - test_predictions)^2) / sum((test_data_fold$int_rate - mean(test_data_fold$int_rate))^2))
+  
+  # Store metrics in the results dataframe
+  results <- rbind(results, data.frame(
+    Fold = i,
+    Train_MSE = train_mse, Test_MSE = test_mse,
+    Train_RMSE = train_rmse, Test_RMSE = test_rmse,
+    Train_MAE = train_mae, Test_MAE = test_mae,
+    Train_R2 = train_r2, Test_R2 = test_r2
+  ))
+}
+
+# Display the models and their metrics
+print(models)
+print(results)
+
+
 #### Decision Trees ####
 
 # Error in tree: "factor predictors must have at most 32 levels" is thrown.
@@ -477,7 +553,7 @@ cat("Testing R-squared (R²):", lm.test_r2, "\n")
 #### Random Forest ####
 
 # Train a Random Forest model
-rf <- ranger(formula = int_rate ~ ., data = sampled_train_data, num.trees = 500,verbose=TRUE)
+rf <- ranger(formula = int_rate ~ ., data = sampled_train_data, num.trees = 500, verbose=TRUE, importance = "impurity", oob.error = TRUE)
 
 # Print the model summary
 print("Random Forest Model Summary:")
@@ -593,7 +669,8 @@ create_scatter_plot <- function(actual_values, predicted_values, model_name) {
     geom_point() +
     geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +  # Add a diagonal reference line
     labs(x = "Actual Training Values", y = "Predicted Training Values", title = model_name) +
-    theme_minimal()
+    theme_minimal() +
+    ylim(-50, 50)
   
   return(scatter_plot)
 }
@@ -636,7 +713,9 @@ create_scatter_plot <- function(actual_values, predicted_values, model_name) {
     geom_point() +
     geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +  # Add a diagonal reference line
     labs(x = "Actual Testing Values", y = "Predicted Testing Values", title = model_name) +
-    theme_minimal()
+    theme_minimal() +
+    ylim(-50, 50) +
+    xlim(0, 40)
   
   return(scatter_plot)
 }
@@ -680,7 +759,9 @@ create_residual_plot <- function(actual_values, predicted_values, model_name) {
     geom_point() +
     geom_hline(yintercept = 0, linetype = "dashed", color = "red") +  # Red horizontal reference line
     labs(x = "Predicted Values", y = "Residuals", title = paste("Residual Plot -", model_name)) +
-    theme_minimal()
+    theme_minimal() +
+    ylim(-30, 30) +
+    xlim(0, 40)
   
   return(residual_plot)
 }
@@ -709,6 +790,23 @@ print(lm_residual_plot)
 print(rf_residual_plot)
 print(xgb_residual_plot)
 ```
+From the plots above we can clearly see that:
+
+-   Linear Regression Residual Plot:
+    -   Pattern: There appears to be a clear pattern in the residuals, with a funnel shape that widens as the predicted values increase. This suggests heteroscedasticity, where the variance of the residuals is not constant across the range of predicted values.
+    -   Outliers: There are several prominent outliers, particularly for higher predicted values. These points significantly deviate from the red dashed line, which represents zero residuals.
+-   Random Forest Residual Plot:
+    -   Pattern: The residuals seem to be randomly dispersed around the zero line at lower predicted values, which is a good sign. However, as predicted values increase, the residuals also increase, suggesting a systematic error in the model predictions.
+    -   Concentration: There is a higher concentration of residuals around the zero line compared to the Linear Regression model, which could indicate a better fit
+-    XGBoost Residual Plot:
+    -   Pattern: The residuals in this plot are more evenly dispersed across the predicted values than in the Linear Regression plot, suggesting a more consistent variance (homoscedasticity) and potentially a better fit.
+    -   Outliers: This plot also shows outliers, but they do not appear as extreme as in the Linear Regression plot. The spread of residuals is narrower compared to the Random Forest plot.
+-   Comparison:
+    -   Heteroscedasticity: The Linear Regression model exhibits clear heteroscedasticity, which is a sign of model inadequacy. This could be improved with transformations or using models that handle non-constant variance better.
+    -   Model Fit: The Random Forest model seems to fit the lower range of predicted values well but shows increasing residuals with higher predicted values, which could indicate overfitting or a lack of generalization for higher values.
+    -   Consistency: The XGBoost model seems to show a more consistent spread of residuals around the zero line, which is indicative of a model that has a consistent performance across the range of predicted values.
+    -   Outliers: All three models have outliers, but their impact seems most pronounced in the Linear Regression model.
+
 This visualization can help you compare the distribution of prediction errors across models.
 ```{r}
 # Create a density plot function for residuals
@@ -717,7 +815,7 @@ create_residual_density_plot <- function(actual_values, predicted_values, model_
   residual_data <- data.frame(Residuals = residuals)
   
   density_plot <- ggplot(residual_data, aes(x = Residuals)) +
-    geom_density(fill = "blue", color = "black", alpha = 0.7) +
+    geom_density(fill = "skyblue", color = "black", alpha = 0.7) +
     labs(x = "Residuals", y = "Density", title = paste("Residual Density Plot -", model_name)) +
     theme_minimal()
   
@@ -748,6 +846,51 @@ print(lm_residual_density_plot)
 print(rf_residual_density_plot)
 print(xgb_residual_density_plot)
 ```
+
+This visualization can help you compare the distribution of prediction errors across models through histograms.
+
+```{r}
+# Create a histogram plot function for residuals with a red density curve
+create_residual_histogram_plot <- function(actual_values, predicted_values, model_name) {
+  residuals <- actual_values - predicted_values
+  residual_data <- data.frame(Residuals = residuals)
+  
+  histogram_plot <- ggplot(residual_data, aes(x = Residuals)) +
+    geom_histogram(aes(y = after_stat(density)), bins = 30, fill = "skyblue", color = "black", alpha = 0.7) +  # Use density on the y-axis for the histogram
+    geom_density(color = "red", linewidth = 1.5) +  # Add the density plot in red
+    labs(x = "Residuals", y = "Density", title = paste("Residual Histogram Plot with Density Curve -", model_name)) +
+    theme_minimal() +
+    xlim(-20,20) + 
+    ylim(0, 0.3)
+  
+  return(histogram_plot)
+}
+
+# Create histogram plots for residuals for each model
+lm_residual_histogram_plot <- create_residual_histogram_plot(
+  actual_values = sampled_train_data$int_rate,
+  predicted_values = lm.train_predictions,
+  model_name = "Linear Regression"
+)
+
+rf_residual_histogram_plot <- create_residual_histogram_plot(
+  actual_values = sampled_train_data$int_rate,
+  predicted_values = rf.train_predictions$predictions,
+  model_name = "Random Forest"
+)
+
+xgb_residual_histogram_plot <- create_residual_histogram_plot(
+  actual_values = xgb.y_train,
+  predicted_values = xgb.train_predictions,
+  model_name = "XGBoost"
+)
+
+# Display the histogram plots separately
+print(lm_residual_histogram_plot)
+print(rf_residual_histogram_plot)
+print(xgb_residual_histogram_plot)
+```
+
 For each model a bar chart that displays the R-squared (coefficient of determination) values is created.
 R-squared measures the proportion of variance in the target variable explained by the model. Higher R-squared values indicate better model fit.
 ```{r}
@@ -775,71 +918,59 @@ print(r_squared_bar_chart)
 A bar chart that compares the MAE or RMSE values, is generated for each model.
 These metrics quantify the average prediction errors of each model, and lower values are preferred.
 ```{r}
-# Create a data frame with MAE or RMSE values for each model
-model_names <- c("Linear Regression", "Random Forest", "XGBoost")
-mae_values <- c(
+# Create a data frame with MAE and RMSE values for each model
+model_names <- c("Linear Regression", "Random Forest", "XGBoost","Linear Regression", "Random Forest", "XGBoost")
+error_values_train <- c(
   lm.train_mae,
   rf.train_mae,
-  xgb.train_mae
-)
-rmse_values <- c(
+  xgb.train_mae,
   lm.train_rmse,
   rf.train_rmse,
   xgb.train_rmse
 )
-
-# Choose either MAE or RMSE by uncommenting the respective lines
-# error_values <- mae_values  # Uncomment for MAE comparison
-error_values <- rmse_values  # Uncomment for RMSE comparison
-
-error_data <- data.frame(Model = factor(model_names),
-                         Error_Type = rep(c("MAE", "RMSE"), each = length(model_names)),
-                         Error_Value = rep(error_values, times = 2))
-
+error_values_test <- c(
+  lm.test_mae,
+  rf.test_mae,
+  xgb.test_mae,
+  lm.test_rmse,
+  rf.test_rmse,
+  xgb.test_rmse
+)
+error_type <- c(
+  "MAE", "MAE", "MAE","RMSE","RMSE","RMSE"
+)
+model_errors_train <- data.frame(Model = factor(model_names, levels = c("Linear Regression", "Random Forest", "XGBoost")),
+                Error = error_values_train, Type = error_type)
+model_errors_test <- data.frame(Model = factor(model_names, levels = c("Linear Regression", "Random Forest", "XGBoost")),
+                Error = error_values_test, Type = error_type)
 # Create the MAE or RMSE comparison bar chart
-error_bar_chart <- ggplot(error_data, aes(x = Model, y = Error_Value, fill = Error_Type)) +
+error_bar_chart_train <- ggplot(model_errors_train, aes(x = Model, y = Error, fill = Type)) +
   geom_bar(stat = "identity", position = "dodge") +
-  labs(x = "Model", y = "Error Value", title = "MAE or RMSE Comparison") +
+  labs(x = "Model", y = "Error Value", title = "Training MAE and RMSE Comparison") +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  ylim(0, 4)
 
-# Display the MAE or RMSE comparison bar chart
-print(error_bar_chart)
+error_bar_chart_test <- ggplot(model_errors_test, aes(x = Model, y = Error, fill = Type)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Model", y = "Error Value", title = "Testing MAE and RMSE Comparison") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  ylim(0, 4)
+
+# Display the MAE and RMSE comparison bar chart
+print(error_bar_chart_train)
+print(error_bar_chart_test)
 ```
+
 
 ```{r}
 #### Random Forest Feature Importance Plot ####
-
-# Extract feature importance values from the Random Forest model
-rf_feature_importance <- importance(rf, type = 1)  # Type 1 for Mean Decrease in Accuracy
-
-# Check if feature importance values are available
-if (length(rf_feature_importance) == 0) {
-  cat("No feature importance values available for the Random Forest model.\n")
-} else {
-  # Create a data frame for Random Forest feature importance
-  rf_feature_data <- data.frame(
-    Feature = row.names(rf_feature_importance),
-    Importance = rf_feature_importance
-  )
-
-  # Convert the "Importance" column to numeric
-  rf_feature_data$Importance <- as.numeric(rf_feature_data$Importance)
-
-  # Sort the data frame by importance in descending order
-  rf_feature_data <- rf_feature_data[order(-rf_feature_data$Importance), ]
-
-  # Create the Random Forest feature importance plot
-  rf_feature_plot <- ggplot(rf_feature_data, aes(x = reorder(Feature, Importance), y = Importance)) +
-    geom_bar(stat = "identity", fill = "blue") +
-    labs(x = "Feature", y = "Importance", title = "Random Forest Feature Importance") +
-    theme_minimal() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-  # Display the Random Forest feature importance plot
-  print(rf_feature_plot)
-}
+v1 <- vip(rf, title = "Ranger", num_features = 20) 
+plot(v1)
 ```
+
+
 Learning curve using RMSE and R^2:
 ```{r}
 # TODO: change the x-axes
