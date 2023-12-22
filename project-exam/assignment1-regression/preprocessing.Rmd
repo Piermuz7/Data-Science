@@ -978,13 +978,13 @@ r_squared_data_test <- data.frame(Model = factor(model_names),
 # Create the R-squared comparison bar chart
 r_squared_bar_chart_train <- ggplot(r_squared_data_train, aes(x = Model, y = R_squared, fill = Model)) +
   geom_bar(stat = "identity") +
-  labs(x = "Model", y = "R-squared (R²)", title = "R-squared Comparison") +
+  labs(x = "Model", y = "R-squared (R²)", title = "R-squared Comparison Training") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
   ylim(0,1)
 r_squared_bar_chart_test <- ggplot(r_squared_data_test, aes(x = Model, y = R_squared, fill = Model)) +
   geom_bar(stat = "identity") +
-  labs(x = "Model", y = "R-squared (R²)", title = "R-squared Comparison") +
+  labs(x = "Model", y = "R-squared (R²)", title = "R-squared Comparison Testing") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
   ylim(0,1)
