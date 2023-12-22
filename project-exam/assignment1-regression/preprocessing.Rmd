@@ -368,13 +368,18 @@ lc_data$earliest_cr_line <- apply(lc_data, 1, function(row) to_unix_time(row["ea
 #lc_data$earliest_cr_line <- scale(lc_data$earliest_cr_line)
 ```
 
+Outliers Removal.
+
 ```{r}
-summary(lc_data)
+boxplot(lc_data$int_rate)
+# Identify outliers using boxplot
+outliers <- boxplot(lc_data$int_rate, plot = FALSE)$out
+# Remove outliers from the dataset
+lc_data_clean <- lc_data[!lc_data$int_rate %in% outliers, ]
 ```
 
-
 ```{r}
-#round(cor(lc_data),2)
+summary(lc_data)
 ```
 
 ```{r}
