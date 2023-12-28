@@ -479,14 +479,7 @@ lasso.target_test <- test_data$int_rate
 
 lasso.fit <- glmnet(lasso.predictors_train, lasso.target_train, alpha = 1)
 
-dim(coef(lasso.fit))
-# we have only 69 rows, because glmnet has a stop criterion, see help.
-
-lasso.fit
-# we observe that some of the coefficients are set to zero (Df=0, %Dev=0)
-
 plot(lasso.fit, label=TRUE)
-# also here we can see that some of the coefficients are set to zero.
 
 # make predictions on the training and testing data
 lasso.train_predictions <- predict(lasso.fit, newdata = train_data, newx = lasso.predictors_train)
@@ -530,16 +523,9 @@ ridge.target_test <- test_data$int_rate
 
 ridge.fit <- glmnet(ridge.predictors_train, ridge.target_train, alpha = 0)
 
-dim(coef(ridge.fit))
-# we have only 69 rows, because glmnet has a stop criterion, see help
-
-ridge.fit
-# we observe that some of the coefficients are set to zero (Df=0, %Dev=0)
-
 plot(ridge.fit, label=TRUE)
-# also here we can see that some of the coefficients are set to zero
-# make predictions on the training and testing data
 
+# make predictions on the training and testing data
 ridge.train_predictions <- predict(ridge.fit, newdata = train_data, newx = ridge.predictors_train)
 ridge.test_predictions <- predict(ridge.fit, newdata = test_data, newx = ridge.predictors_train)
 
