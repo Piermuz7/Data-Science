@@ -22,6 +22,8 @@ library(gbm)
 library(vip)
 library(ISLR)
 library(tidyr)
+library(gridExtra)
+library(reshape2)
 ```
 Set the seed for reproducibility
 
@@ -658,7 +660,7 @@ plot_metric <- function(results_long, metric) {
 
 ```{r}
 # reshape data for plotting
-lm.k5.results_long <- reshape2::melt(lm.k5.results, id.vars = 'Fold')
+lm.k5.results_long <- melt(lm.k5.results, id.vars = 'Fold')
 
 # plot for each metric
 p1 <- plot_metric(lm.k5.results_long, 'MSE')
@@ -667,7 +669,7 @@ p3 <- plot_metric(lm.k5.results_long, 'MAE')
 p4 <- plot_metric(lm.k5.results_long, 'R2')
 
 # arrange the plots in a 2x2 grid
-gridExtra::grid.arrange(p1, p2, p3, p4, ncol = 2, nrow = 2)
+grid.arrange(p1, p2, p3, p4, ncol = 2, nrow = 2)
 
 plot(p1)
 plot(p2)
@@ -728,7 +730,7 @@ print(rf.k5.results)
 ```
 ```{r}
 # reshape data for plotting
-rf.k5.results_long <- reshape2::melt(rf.k5.results, id.vars = 'Fold')
+rf.k5.results_long <- melt(rf.k5.results, id.vars = 'Fold')
 
 # plot for each metric
 p1 <- plot_metric(rf.k5.results_long, 'MSE')
@@ -737,7 +739,7 @@ p3 <- plot_metric(rf.k5.results_long, 'MAE')
 p4 <- plot_metric(rf.k5.results_long, 'OOB')
 
 # arrange the plots in a 2x2 grid
-gridExtra::grid.arrange(p1, p2, p3, p4, ncol = 2, nrow = 2)
+grid.arrange(p1, p2, p3, p4, ncol = 2, nrow = 2)
 
 plot(p1)
 plot(p2)
@@ -811,7 +813,7 @@ print(xgb.k5.results)
 ```
 ```{r}
 # reshape data for plotting
-xgb.k5.results_long <- reshape2::melt(xgb.k5.results, id.vars = 'Fold')
+xgb.k5.results_long <- melt(xgb.k5.results, id.vars = 'Fold')
 
 # plot for each metric
 p1 <- plot_metric(xgb.k5.results_long, 'MSE')
@@ -820,7 +822,7 @@ p3 <- plot_metric(xgb.k5.results_long, 'MAE')
 p4 <- plot_metric(xgb.k5.results_long, 'R2')
 
 # arrange the plots in a 2x2 grid
-gridExtra::grid.arrange(p1, p2, p3, p4, ncol = 2, nrow = 2)
+grid.arrange(p1, p2, p3, p4, ncol = 2, nrow = 2)
 
 plot(p1)
 plot(p2)
