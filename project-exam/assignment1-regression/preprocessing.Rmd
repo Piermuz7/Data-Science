@@ -23,7 +23,6 @@ library(vip)
 library(ISLR)
 library(tidyr)
 ```
-
 Set the seed for reproducibility
 
 ```{r}
@@ -37,7 +36,7 @@ original_lc_data <- read.csv("LCdata.csv",sep = ";")
 lc_data <- original_lc_data
 ```
 
-remove attributes not available for prediction
+Remove attributes not available for prediction
 
 ```{r}
 lc_data <- subset(lc_data, select = -c(collection_recovery_fee, installment, issue_d,
@@ -51,7 +50,6 @@ lc_data <- subset(lc_data, select = -c(collection_recovery_fee, installment, iss
 ```{r}
 summary(lc_data)
 ```
-
 First we delete the columns which aren't useful for our prediction
 
 ```{r}
@@ -60,11 +58,15 @@ lc_data$member_id <- NULL
 lc_data$zip_code <- NULL
 lc_data$url <- NULL
 ```
+
 Looks like **policy_code** contains just value equal to 1, it can be removed
+
 ```{r}
 lc_data$policy_code <- NULL
 ```
+
 Remove additional columns which are related to the historical data
+
 ```{r}
 lc_data$last_credit_pull_d <- NULL
 ```
@@ -75,10 +77,9 @@ Then we delete the columns which can't be converted to categorical and require N
 lc_data$title <- NULL
 lc_data$desc <- NULL
 lc_data$emp_title <- NULL
-
 ```
 
-let's examine the **loan_amnt** column
+Let's examine the **loan_amnt** column
 
 ```{r}
 sum(is.na(lc_data$loan_amnt))
@@ -87,13 +88,13 @@ hist(lc_data$loan_amnt, breaks = 20, main = "loan_amnt distribution", xlab = "lo
 ggplot(data = lc_data, mapping = aes(x=int_rate,y=loan_amnt)) + geom_boxplot()
 ```
 
-standardize **loan_amnt**
+Standardize **loan_amnt**
 
 ```{r}
 #lc_data$loan_amnt <- scale(lc_data$loan_amnt)
 ```
 
-let's examine the **funded_amnt** column
+Let's examine the **funded_amnt** column
 
 ```{r}
 sum(is.na(lc_data$funded_amnt))
@@ -101,13 +102,13 @@ cor(lc_data$funded_amnt, lc_data$int_rate)
 hist(lc_data$funded_amnt, breaks = 20, main = "funded_amnt distribution", xlab = "funded_amnt", col = "lightblue", border = "black")
 ```
 
-as we can see, **funded_amnt** is almost the same as the **loan_amnt** column, consequently, we remove it.
+As we can see, **funded_amnt** is almost the same as the **loan_amnt** column, consequently, we remove it.
 
 ```{r}
 lc_data$funded_amnt <- NULL 
 ```
 
-let's examine the **funded_amnt_inv** column
+Let's examine the **funded_amnt_inv** column
 
 ```{r}
 sum(is.na(lc_data$funded_amnt_inv))
@@ -115,24 +116,22 @@ cor(lc_data$funded_amnt_inv, lc_data$int_rate)
 hist(lc_data$funded_amnt_inv, breaks = 20, main = "funded_amnt_inv distribution", xlab = "funded_amnt_inv", col = "lightblue", border = "black")
 ```
 
-remove **funded_amnt_inv** for the same reason as above
+Remove **funded_amnt_inv** for the same reason as above
 
 ```{r}
 lc_data$funded_amnt_inv <- NULL
 ```
 
-let's see the **int_rate** distribution.
+Let's see the **int_rate** distribution.
 ```{r}
 hist(lc_data$int_rate, breaks = 20, main = "int_rate distribution", xlab = "int_rate", col = "lightblue", border = "black")
 ```
+
 Standardize int rate:
 ```{r}
 #lc_data$int_rate <- scale(lc_data$int_rate)
 ```
-we delete the **emp_title** column as there are several entries for the same job title and because there are too many different values for one-hot encoding. In addition, some titles are unclear (NLP required)
-```{r}
-n_distinct(lc_data$emp_title)
-```
+
 As we can observe, there are 40363 NAs. We can assume 40363 do not work.
 ```{r}
 barplot(table(lc_data$emp_length),
@@ -144,18 +143,20 @@ barplot(table(lc_data$emp_length),
 ```
 
 Since **emp_length** seems to be categorical, we transform it to as a factor and then as numeric.
-The conversion to numeric is needed for supporting the XGBoost 
+The conversion to numeric is needed for supporting the XGBoost
+
 ```{r}
 lc_data$emp_length <- as.factor(lc_data$emp_length)
 ggplot(data = lc_data, mapping = aes(x=int_rate,y=emp_length)) + geom_boxplot()
 lc_data$emp_length <- as.numeric(lc_data$emp_length)
 ```
-**term**
+
+As we can see, **term** plays a crucial role in predicting the interest rate.
+
 ```{r}
 lc_data$term <- as.factor(lc_data$term)
 ggplot(data = lc_data, mapping = aes(x=int_rate,y=term)) + geom_boxplot()
 lc_data$term <- as.numeric(lc_data$term)
-boh = order(lc_data$term)
 ```
 
 Cleaning of **home_ownership**:
@@ -166,13 +167,16 @@ During the data cleaning phase, our analysis revealed that the variable "home_ow
 table(lc_data$home_ownership)
 ggplot(data = lc_data, mapping = aes(x=int_rate,y=home_ownership)) + geom_boxplot()
 ```
+
 Then, we retain mortgage, own and rent:
+
 ```{r}
 lc_data <- lc_data %>% filter(home_ownership %in% c("MORTGAGE","OWN","RENT"))
 lc_data$home_ownership <- as.numeric(as.factor(lc_data$home_ownership))
 ```
 
-# application joint handling
+Application joint handling:
+
 ```{r}
 
 # merging annual income
@@ -180,7 +184,6 @@ lc_data <- lc_data %>% mutate(
     annual_inc_merged = ifelse(is.na(annual_inc_joint)== TRUE, annual_inc,annual_inc_joint)) 
 
 lc_data <- lc_data %>% select(-annual_inc,-annual_inc_joint)
-
 
 # merging debt to income ratio
 lc_data <- lc_data %>% mutate(
@@ -209,6 +212,7 @@ lc_data$purpose <- as.factor(lc_data$purpose)
 ggplot(data = lc_data, mapping = aes(x=int_rate,y=purpose)) + geom_boxplot()
 lc_data$purpose <- as.numeric(lc_data$purpose)
 ```
+
 Let's have a glance to the state address:
 ```{r}
 table(lc_data$addr_state)
@@ -216,12 +220,14 @@ lc_data$addr_state <- as.factor(lc_data$addr_state)
 ggplot(data = lc_data, mapping = aes(x=int_rate,y=addr_state)) + geom_boxplot()
 lc_data$addr_state <- as.numeric(lc_data$addr_state)
 ```
+
 Regarding delinquency in the last 2 years, there are few NAs then remove them:
 ```{r}
 lc_data <- lc_data %>% 
     filter(!(is.na(delinq_2yrs)))
 ```
 
+The columns **mths_since_delinq_cat**, **mths_since_last_record**, **mths_since_rcnt_il** and **mths_since_last_major_derog** contain numerical values which refer to the number of the months. Since this columns contain a lot of null values which can't be replaced with 0's, one of the most appropriate operations that can be made is applying discretization. We do this by creating a set of contiguous bins based on years, while for the null values we create a separate bin.
 
 ```{r}
 lc_data <- lc_data %>%
@@ -275,6 +281,31 @@ lc_data$mths_since_last_record_cat <- as.numeric(lc_data$mths_since_last_record_
 
 ```{r}
 lc_data <-lc_data %>% 
+  mutate(mths_since_rcnt_il_cat =  ifelse(
+    is.na(mths_since_rcnt_il) == TRUE,
+    "NONE",
+    ifelse(
+      mths_since_rcnt_il <= 12,
+      "Less_1_Y",
+      ifelse(
+        mths_since_rcnt_il <= 24,
+        "Less_2_Y",
+        ifelse(
+          mths_since_rcnt_il <= 36,
+          "Less_3_Y",
+          ifelse(mths_since_rcnt_il <= 48, "Less_4_Y", "More_4_Y")
+        )
+      )
+    )
+  )) %>% select(-mths_since_rcnt_il)
+
+lc_data$mths_since_rcnt_il_cat <- as.factor(lc_data$mths_since_rcnt_il_cat)
+ggplot(data = lc_data, mapping = aes(x=int_rate,y=mths_since_rcnt_il_cat))+geom_boxplot()
+lc_data$mths_since_rcnt_il_cat <- as.numeric(lc_data$mths_since_rcnt_il_cat)
+```
+
+```{r}
+lc_data <-lc_data %>% 
   mutate(mths_since_last_major_derog_cat =  ifelse(
     is.na(mths_since_last_major_derog) == TRUE,
     "NONE",
@@ -299,6 +330,9 @@ lc_data$mths_since_last_major_derog_cat <- as.numeric(lc_data$mths_since_last_ma
 
 ```
 
+
+The variable **initial_list_status** identifies whether a loan was initially listed in the whole (W) or fractional (F) market. This variable could be useful so we can keep it and transform it to a factor and then to a numeric value, for the same purpose of compatibility with the XGBoost function.
+
 ```{r}
 lc_data$initial_list_status <- as.factor(lc_data$initial_list_status)
 ggplot(data = lc_data, mapping = aes(x=int_rate,y=initial_list_status))+geom_boxplot()
@@ -309,7 +343,9 @@ Let's check which columns still have null values
 ```{r}
 colSums(is.na(lc_data))
 ```
-The columns **revol_bal** and **revol_util** contain only few NA values, those values can't be replaced with 0, then we filter the values which are not NA
+
+The columns **revol_bal** and **revol_util** contain only few NA values, those values can't be replaced with 0, then we filter the values which are not NAs.
+
 ```{r}
 lc_data <- lc_data %>% 
     filter(!(is.na(revol_bal))) %>% 
@@ -317,12 +353,14 @@ lc_data <- lc_data %>%
 ```
 
 
-Let's check which columns still have null values
+Let's check which columns still have null values:
+
 ```{r}
 names(which(colSums(is.na(lc_data)) > 0))
 ```
 
 Replace null values with 0 where is possible
+
 ```{r}
 lc_data <-
   lc_data %>%
@@ -331,7 +369,6 @@ lc_data <-
   mutate(open_il_6m = ifelse(is.na(open_il_6m) == TRUE, 0, open_il_6m)) %>%
   mutate(open_il_12m = ifelse(is.na(open_il_12m) == TRUE, 0, open_il_12m)) %>%
   mutate(open_il_24m = ifelse(is.na(open_il_24m) == TRUE, 0, open_il_24m)) %>%
-  mutate(mths_since_rcnt_il = ifelse(is.na(mths_since_rcnt_il) == TRUE, 0, mths_since_rcnt_il)) %>%
   mutate(total_bal_il = ifelse(is.na(total_bal_il) == TRUE, 0, total_bal_il)) %>%
   mutate(il_util = ifelse(is.na(il_util) == TRUE, 0, il_util)) %>%
   mutate(open_rv_12m = ifelse(is.na(open_rv_12m) == TRUE, 0, open_rv_12m)) %>%
@@ -369,7 +406,7 @@ lc_data$earliest_cr_line <- apply(lc_data, 1, function(row) to_unix_time(row["ea
 #lc_data$earliest_cr_line <- scale(lc_data$earliest_cr_line)
 ```
 
-Outliers Removal.
+Outliers Removal:
 
 ```{r}
 boxplot(lc_data$int_rate)
@@ -383,40 +420,15 @@ lc_data_clean <- lc_data[!lc_data$int_rate %in% outliers, ]
 summary(lc_data)
 ```
 
-```{r}
+**Learning Algorithms**
 
-# TODO: (parte vecchia), split 80/20 e linear regression...
-# Create indices for splitting (80% train, 20% test)
+```{r}
+# create indices for splitting (80% train, 20% test)
 train_indices <- createDataPartition(lc_data$int_rate, p = 0.8, list = FALSE)
 
-# Create training and testing datasets
+# create training and testing datasets
 train_data <- lc_data[train_indices, ]
 test_data <- lc_data[-train_indices, ]
-
-#### Linear Regression ####
-#lm.fit <- lm(int_rate ~ ., data = train_data)
-
-# TODO: check collinearity and multicollinearity
-#vif(lm.fit) # there is multicollinearity
-#cor(lc_data) 
-
-# Make predictions on training and testing data
-#train_predictions <- predict(lm.fit, newdata = train_data)
-#test_predictions <- predict(lm.fit, newdata = test_data)
-
-# Evaluate model performance on training data
-#train_rmse <- sqrt(mean((train_predictions - train_data$int_rate)^2))
-#train_r_squared <- summary(lm.fit)$r.squared
-
-# Evaluate model performance on testing data
-#test_rmse <- sqrt(mean((test_predictions - test_data$int_rate)^2))
-#test_r_squared <- summary(lm.fit, test_data)$r.squared
-
-# Print evaluation metrics
-#cat("Training RMSE:", train_rmse, "\n")
-#cat("Training R-squared:", train_r_squared, "\n")
-#rmse <- sqrt(mean(lm.fit$residuals^2))
-#print(rmse)
 ```
 
 ```{r}
@@ -424,27 +436,27 @@ test_data <- lc_data[-train_indices, ]
 
 lm.fit <- lm(int_rate ~ ., data = train_data)
 
-# Make predictions on the training and testing data
+# make predictions on the training and testing data
 lm.train_predictions <- predict(lm.fit, newdata = train_data)
 lm.test_predictions <- predict(lm.fit, newdata = test_data)
 
-# Calculate Mean Squared Error (MSE) for training and testing
+# calculate Mean Squared Error (MSE) for training and testing
 lm.train_mse <- mean((lm.train_predictions - train_data$int_rate)^2)
 lm.test_mse <- mean((lm.test_predictions - test_data$int_rate)^2)
 
-# Calculate Root Mean Squared Error (RMSE) for training and testing
+# calculate Root Mean Squared Error (RMSE) for training and testing
 lm.train_rmse <- sqrt(lm.train_mse)
 lm.test_rmse <- sqrt(lm.test_mse)
 
-# Calculate Mean Absolute Error (MAE) for training and testing
+# calculate Mean Absolute Error (MAE) for training and testing
 lm.train_mae <- mean(abs(lm.train_predictions - train_data$int_rate))
 lm.test_mae <- mean(abs(lm.test_predictions - test_data$int_rate))
 
-# Calculate R-squared (R²) for training and testing
+# calculate R-squared (R²) for training and testing
 lm.train_r2 <- 1 - (sum((train_data$int_rate - lm.train_predictions)^2) / sum((train_data$int_rate - mean(train_data$int_rate))^2))
 lm.test_r2 <- 1 - (sum((test_data$int_rate - lm.test_predictions)^2) / sum((test_data$int_rate - mean(test_data$int_rate))^2))
 
-# Display the metrics
+# display the metrics
 cat("Training MSE:", lm.train_mse, "\n")
 cat("Testing MSE:", lm.test_mse, "\n")
 cat("Training RMSE:", lm.train_rmse, "\n")
@@ -454,7 +466,7 @@ cat("Testing MAE:", lm.test_mae, "\n")
 cat("Training R-squared (R²):", lm.train_r2, "\n")
 cat("Testing R-squared (R²):", lm.test_r2, "\n")
 ```
-Lasso
+**Lasso**
 It standardizes data automatically
 
 ```{r}
@@ -466,35 +478,35 @@ lasso.target_test <- test_data$int_rate
 lasso.fit <- glmnet(lasso.predictors_train, lasso.target_train, alpha = 1)
 
 dim(coef(lasso.fit))
-# We have only 69 rows, because glmnet has a stop criterion, see help.
+# we have only 69 rows, because glmnet has a stop criterion, see help.
 
 lasso.fit
-# We observe that some of the coefficients are set to zero (Df=0, %Dev=0)
+# we observe that some of the coefficients are set to zero (Df=0, %Dev=0)
 
 plot(lasso.fit, label=TRUE)
-# Also here we can see that some of the coefficients are set to zero.
-# Make predictions on the training and testing data
+# also here we can see that some of the coefficients are set to zero.
 
+# make predictions on the training and testing data
 lasso.train_predictions <- predict(lasso.fit, newdata = train_data, newx = lasso.predictors_train)
 lasso.test_predictions <- predict(lasso.fit, newdata = test_data, newx = lasso.predictors_train)
 
-# Calculate Mean Squared Error (MSE) for training and testing
+# calculate Mean Squared Error (MSE) for training and testing
 lasso.train_mse <- mean((lasso.train_predictions - train_data$int_rate)^2)
 lasso.test_mse <- mean((lasso.test_predictions - test_data$int_rate)^2)
 
-# Calculate Root Mean Squared Error (RMSE) for training and testing
+# calculate Root Mean Squared Error (RMSE) for training and testing
 lasso.train_rmse <- sqrt(lasso.train_mse)
 lasso.test_rmse <- sqrt(lasso.test_mse)
 
-# Calculate Mean Absolute Error (MAE) for training and testing
+# calculate Mean Absolute Error (MAE) for training and testing
 lasso.train_mae <- mean(abs(lasso.train_predictions - train_data$int_rate))
 lasso.test_mae <- mean(abs(lasso.test_predictions - test_data$int_rate))
 
-# Calculate R-squared (R²) for training and testing
+# calculate R-squared (R²) for training and testing
 lasso.train_r2 <- 1 - (sum((train_data$int_rate - lasso.train_predictions)^2) / sum((train_data$int_rate - mean(train_data$int_rate))^2))
 lasso.test_r2 <- 1 - (sum((test_data$int_rate - lasso.test_predictions)^2) / sum((test_data$int_rate - mean(test_data$int_rate))^2))
 
-# Display the metrics
+# display the metrics
 cat("Training MSE:", lasso.train_mse, "\n")
 cat("Testing MSE:", lasso.test_mse, "\n")
 cat("Training RMSE:", lasso.train_rmse, "\n")
@@ -505,9 +517,62 @@ cat("Training R-squared (R²):", lasso.train_r2, "\n")
 cat("Testing R-squared (R²):", lasso.test_r2, "\n")
 ```
 
+**Ridge**
+It standardizes data automatically
+
+```{r}
+ridge.predictors_train <- model.matrix(int_rate ~ ., train_data)[,-1]
+ridge.target_train <- train_data$int_rate
+ridge.predictors_test <- model.matrix(int_rate ~ ., test_data)[,-1]
+ridge.target_test <- test_data$int_rate
+
+ridge.fit <- glmnet(ridge.predictors_train, ridge.target_train, alpha = 0)
+
+dim(coef(ridge.fit))
+# we have only 69 rows, because glmnet has a stop criterion, see help
+
+ridge.fit
+# we observe that some of the coefficients are set to zero (Df=0, %Dev=0)
+
+plot(ridge.fit, label=TRUE)
+# also here we can see that some of the coefficients are set to zero
+# make predictions on the training and testing data
+
+ridge.train_predictions <- predict(ridge.fit, newdata = train_data, newx = ridge.predictors_train)
+ridge.test_predictions <- predict(ridge.fit, newdata = test_data, newx = ridge.predictors_train)
+
+# calculate Mean Squared Error (MSE) for training and testing
+ridge.train_mse <- mean((ridge.train_predictions - train_data$int_rate)^2)
+ridge.test_mse <- mean((ridge.test_predictions - test_data$int_rate)^2)
+
+# calculate Root Mean Squared Error (RMSE) for training and testing
+ridge.train_rmse <- sqrt(ridge.train_mse)
+ridge.test_rmse <- sqrt(ridge.test_mse)
+
+# calculate Mean Absolute Error (MAE) for training and testing
+ridge.train_mae <- mean(abs(ridge.train_predictions - train_data$int_rate))
+ridge.test_mae <- mean(abs(ridge.test_predictions - test_data$int_rate))
+
+# calculate R-squared (R²) for training and testing
+ridge.train_r2 <- 1 - (sum((train_data$int_rate - ridge.train_predictions)^2) / sum((train_data$int_rate - mean(train_data$int_rate))^2))
+ridge.test_r2 <- 1 - (sum((test_data$int_rate - ridge.test_predictions)^2) / sum((test_data$int_rate - mean(test_data$int_rate))^2))
+
+# display the metrics
+cat("Training MSE:", ridge.train_mse, "\n")
+cat("Testing MSE:", ridge.test_mse, "\n")
+cat("Training RMSE:", ridge.train_rmse, "\n")
+cat("Testing RMSE:", ridge.test_rmse, "\n")
+cat("Training MAE:", ridge.train_mae, "\n")
+cat("Testing MAE:", ridge.test_mae, "\n")
+cat("Training R-squared (R²):", ridge.train_r2, "\n")
+cat("Testing R-squared (R²):", ridge.test_r2, "\n")
+```
+
+# TODO: test with k=10
+
 K fold using K=5:
 ```{r}
-# Define the number of folds for cross-validation
+# define the number of folds for cross-validation
 num_folds <- 5
 folds <- createFolds(train_data$int_rate, k = num_folds, list = TRUE)
 ```
@@ -517,40 +582,40 @@ K fold using K=5 and linear regression:
 ```{r}
 #### Linear Regresion applying Cross Validation with k=5  ####
 
-# Initialize lists to store models and their results
+# initialize lists to store models and their results
 lm.k5.models <- list()
 lm.k5.results <- data.frame()
 
-# Perform k-fold cross-validation
+# perform k-fold cross-validation
 for(i in seq_along(folds)) {
-  # Split the data into training and testing for the current fold
+  # split the data into training and testing for the current fold
   train_indices <- folds[[i]]
   test_indices <- setdiff(seq_len(nrow(train_data)), train_indices)
   
   train_data_fold <- train_data[train_indices, ]
   test_data_fold <- train_data[test_indices, ]
   
-  # Fit the model on the training fold
+  # fit the model on the training fold
   lm.k5 <- lm(int_rate ~ ., data = train_data_fold)
   lm.k5.models[[i]] <- lm.k5  # Store the model
   
-  # Make predictions on the training and testing fold
+  # make predictions on the training and testing fold
   lm.k5.train_predictions <- predict(lm.k5, newdata = train_data_fold)
   lm.k5.test_predictions <- predict(lm.k5, newdata = test_data_fold)
   
-  # Calculate metrics for training fold
+  # calculate metrics for training fold
   lm.k5.train_mse <- mean((lm.k5.train_predictions - train_data_fold$int_rate)^2)
   lm.k5.train_rmse <- sqrt(lm.k5.train_mse)
   lm.k5.train_mae <- mean(abs(lm.k5.train_predictions - train_data_fold$int_rate))
   lm.k5.train_r2 <- summary(lm.k5)$r.squared
   
-  # Calculate metrics for testing fold
+  # calculate metrics for testing fold
   lm.k5.test_mse <- mean((lm.k5.test_predictions - test_data_fold$int_rate)^2)
   lm.k5.test_rmse <- sqrt(lm.k5.test_mse)
   lm.k5.test_mae <- mean(abs(lm.k5.test_predictions - test_data_fold$int_rate))
   lm.k5.test_r2 <- 1 - (sum((test_data_fold$int_rate - lm.k5.test_predictions)^2) / sum((test_data_fold$int_rate - mean(test_data_fold$int_rate))^2))
   
-  # Store metrics in the results dataframe
+  # store metrics in the results dataframe
   lm.k5.results <- rbind(lm.k5.results, data.frame(
     Fold = i,
     Train_MSE = lm.k5.train_mse, Test_MSE = lm.k5.test_mse,
@@ -560,160 +625,177 @@ for(i in seq_along(folds)) {
   ))
 }
 
-# Display the models and their metrics
+# display the models and their metrics
 print(lm.k5.models)
 print(lm.k5.results)
 ```
 
 ```{r}
-long_data <- pivot_longer(lm.k5.results, 
-                          cols = -Fold,  # Exclude Fold from reshaping
-                          names_to = "Metric", 
-                          values_to = "Value")
-
-# Check the reshaped data
-print(head(long_data))
+plot_metric <- function(results_long, metric) {
+    # adjust the variable names based on the metric
+    variables <- if (metric == "OOB") {
+        "OOB_Error"
+    } else {
+        c(paste0('Train_', metric), paste0('Test_', metric))
+    }
+    title <- if (metric == "OOB") {
+        paste0(metric, ' per Fold')
+    } else {
+        paste0('Train vs Test ', metric, ' per Fold')
+    }
+    
+    ggplot(results_long[results_long$variable %in% variables, ],
+           aes(x = Fold, y = value, color = variable)) +
+    geom_line() +
+    geom_point() +
+    theme_minimal() +
+    labs(title = title,
+         x = 'Fold',
+         y = metric)
+}
 ```
+
 
 ```{r}
+# reshape data for plotting
+lm.k5.results_long <- reshape2::melt(lm.k5.results, id.vars = 'Fold')
 
-# Ensure that the 'Fold' column in the reshaped data contains all fold numbers
-print(unique(long_data$Fold))
-# Plot for Training Metrics
-ggplot(long_data_training, aes(x = factor(Fold), y = Value, color = Metric)) +
-  geom_point() +
-  geom_line() +  # Use this only if it makes sense to connect points across folds
-  labs(title = "Training Metrics per Fold - Linear Regression",
-       x = "Fold",
-       y = "Metric Value") +
-  theme_minimal() +
-  scale_color_discrete(name = "Training Metrics")
+# plot for each metric
+p1 <- plot_metric(lm.k5.results_long, 'MSE')
+p2 <- plot_metric(lm.k5.results_long, 'RMSE')
+p3 <- plot_metric(lm.k5.results_long, 'MAE')
+p4 <- plot_metric(lm.k5.results_long, 'R2')
 
-ggplot(subset(long_data, grepl("Train", Metric)), aes(x = factor(Fold), y = Value, color = Metric)) +
-  geom_point() +
-  geom_line() +  # Use this only if it makes sense to connect points across folds
-  labs(title = "Training Metrics per Fold - Linear Regression",
-       x = "Fold",
-       y = "Metric Value") +
-  theme_minimal() +
-  scale_color_discrete(name = "Training Metrics")
-# Plot for Testing Metrics
+# arrange the plots in a 2x2 grid
+gridExtra::grid.arrange(p1, p2, p3, p4, ncol = 2, nrow = 2)
 
-ggplot(long_data_testing, aes(x = factor(Fold), y = Value, color = Metric)) +
-  geom_point() +
-  geom_line() +  # Use this only if it makes sense to connect points across folds
-  labs(title = "Testing Metrics per Fold - Linear Regression",
-       x = "Fold",
-       y = "Metric Value") +
-  theme_minimal() +
-  scale_color_discrete(name = "Testing Metrics")
+plot(p1)
+plot(p2)
+plot(p3)
+plot(p4)
 ```
-
 
 K fold using K=5 and Random Forest:
 ```{r}
 #### Random Forest applying Cross Validation with k=5  ####
 
-# Initialize lists to store models and their results
+# initialize lists to store models and their results
 rf.k5.models <- list()
 rf.k5.results <- data.frame()
 
-# Perform k-fold cross-validation
+# perform k-fold cross-validation
 for(i in seq_along(folds)) {
-  # Split the data into training and testing for the current fold
+  # split the data into training and testing for the current fold
   train_indices <- folds[[i]]
   test_indices <- setdiff(seq_len(nrow(train_data)), train_indices)
   
   train_data_fold <- train_data[train_indices, ]
   test_data_fold <- train_data[test_indices, ]
   
-  # Fit the model on the training fold
+  # fit the model on the training fold
   rf.k5 <- ranger(formula = int_rate ~ ., data = train_data, num.trees = 500, verbose=TRUE, importance = "impurity", oob.error = TRUE)
   rf.k5.models[[i]] <- rf.k5  # Store the model
   
-  # Make predictions on the training and testing fold
-  rf.k5.train_predictions <- predict(rf.k5, data = train_data_fold)
-  rf.k5.test_predictions <- predict(rf.k5, data = test_data_fold)
+  # make predictions on the training and testing fold
+  rf.k5.train_predictions <- predict(rf.k5, data = train_data_fold)$predictions
+  rf.k5.test_predictions <- predict(rf.k5, data = test_data_fold)$predictions
   
-  # Calculate metrics for training fold
+  # calculate metrics for training fold
   rf.k5.train_mse <- mean((rf.k5.train_predictions - train_data_fold$int_rate)^2)
   rf.k5.train_rmse <- sqrt(rf.k5.train_mse)
   rf.k5.train_mae <- mean(abs(rf.k5.train_predictions - train_data_fold$int_rate))
-  rf.k5.train_r2 <- summary(rf.k5)$r.squared
+  rf.k5.oob_error <- rf.k5$prediction.error
   
-  # Calculate metrics for testing fold
+  # calculate metrics for testing fold
   rf.k5.test_mse <- mean((rf.k5.test_predictions - test_data_fold$int_rate)^2)
   rf.k5.test_rmse <- sqrt(rf.k5.test_mse)
   rf.k5.test_mae <- mean(abs(rf.k5.test_predictions - test_data_fold$int_rate))
   rf.k5.test_r2 <- 1 - (sum((test_data_fold$int_rate - rf.k5.test_predictions)^2) / sum((test_data_fold$int_rate - mean(test_data_fold$int_rate))^2))
   
-  # Store metrics in the results dataframe
+  # store metrics in the results dataframe
   rf.k5.results <- rbind(rf.k5.results, data.frame(
     Fold = i,
     Train_MSE = rf.k5.train_mse, Test_MSE = rf.k5.test_mse,
     Train_RMSE = rf.k5.train_rmse, Test_RMSE = rf.k5.test_rmse,
     Train_MAE = rf.k5.train_mae, Test_MAE = rf.k5.test_mae,
-    Train_R2 = rf.k5.train_r2, Test_R2 = rf.k5.test_r2
+    OOB_Error = rf.k5.oob_error
   ))
 }
 
-# Display the models and their metrics
+# display the models and their metrics
 print(rf.k5.models)
 print(rf.k5.results)
 ```
+```{r}
+# reshape data for plotting
+rf.k5.results_long <- reshape2::melt(rf.k5.results, id.vars = 'Fold')
 
+# plot for each metric
+p1 <- plot_metric(rf.k5.results_long, 'MSE')
+p2 <- plot_metric(rf.k5.results_long, 'RMSE')
+p3 <- plot_metric(rf.k5.results_long, 'MAE')
+p4 <- plot_metric(rf.k5.results_long, 'OOB')
+
+# arrange the plots in a 2x2 grid
+gridExtra::grid.arrange(p1, p2, p3, p4, ncol = 2, nrow = 2)
+
+plot(p1)
+plot(p2)
+plot(p3)
+plot(p4)
+```
 
 K fold using K=5 and Boosting:
 ```{r}
 #### Boosting applying Cross Validation with k=5  ####
 
-# Initialize lists to store models and their results
+# initialize lists to store models and their results
 xgb.k5.models <- list()
 xgb.k5.results <- data.frame()
 
-# Perform k-fold cross-validation
+# perform k-fold cross-validation
 for(i in seq_along(folds)) {
-  # Split the data into training and testing for the current fold
+  # split the data into training and testing for the current fold
   train_indices <- folds[[i]]
   test_indices <- setdiff(seq_len(nrow(train_data)), train_indices)
   
   train_data_fold <- train_data[train_indices, ]
   test_data_fold <- train_data[test_indices, ]
   
-  # Prepare data for xgboost
+  # prepare data for xgboost
   xgb.y_train_fold <- train_data_fold$int_rate
   xgb.X_train_fold <- as.matrix(train_data_fold[, -which(names(train_data_fold) == 'int_rate')])
   
   xgb.y_test_fold <- test_data_fold$int_rate
   xgb.X_test_fold <- as.matrix(test_data_fold[, -which(names(test_data_fold) == 'int_rate')])
   
-  # Fit the xgboost model on the training fold
+  # fit the xgboost model on the training fold
   xgb.k5 <- xgboost(
     data = xgb.X_train_fold,
     label = xgb.y_train_fold,
     nrounds = 100,
     verbose = 0
   )
-  xgb.k5.models[[i]] <- xgb.k5  # Store the model
+  xgb.k5.models[[i]] <- xgb.k5  # store the model
   
-  # Make predictions on the training fold
+  # make predictions on the training fold
   xgb.k5.train_predictions <- predict(xgb.k5, newdata = xgb.X_train_fold)
-  # Make predictions on the testing fold
+  # make predictions on the testing fold
   xgb.k5.test_predictions <- predict(xgb.k5, newdata = xgb.X_test_fold)
   
-  # Calculate metrics for training fold
+  # calculate metrics for training fold
   xgb.k5.train_mse <- mean((xgb.k5.train_predictions - train_data_fold$int_rate)^2)
   xgb.k5.train_rmse <- sqrt(xgb.k5.train_mse)
   xgb.k5.train_mae <- mean(abs(xgb.k5.train_predictions - train_data_fold$int_rate))
   xgb.k5.train_r2 <- 1 - (sum((xgb.y_train_fold - xgb.k5.train_predictions)^2) / sum((xgb.y_train_fold - mean(xgb.y_train_fold))^2))
 
-  # Calculate metrics for testing fold
+  # calculate metrics for testing fold
   xgb.k5.test_mse <- mean((xgb.k5.test_predictions - xgb.y_test_fold)^2)
   xgb.k5.test_rmse <- sqrt(xgb.k5.test_mse)
   xgb.k5.test_mae <- mean(abs(xgb.k5.test_predictions - xgb.y_test_fold))
   xgb.k5.test_r2 <- 1 - (sum((xgb.y_test_fold - xgb.k5.test_predictions)^2) / sum((xgb.y_test_fold - mean(xgb.y_test_fold))^2))  
   
-  # Store metrics in the results dataframe
+  # store metrics in the results dataframe
   xgb.k5.results <- rbind(xgb.k5.results, data.frame(
     Fold = i,
     Train_MSE = xgb.k5.train_mse, Test_MSE = xgb.k5.test_mse,
@@ -723,44 +805,61 @@ for(i in seq_along(folds)) {
   ))
 }
 
-# Display the models and their metrics
+# display the models and their metrics
 print(xgb.k5.models)
 print(xgb.k5.results)
 ```
+```{r}
+# reshape data for plotting
+xgb.k5.results_long <- reshape2::melt(xgb.k5.results, id.vars = 'Fold')
 
+# plot for each metric
+p1 <- plot_metric(xgb.k5.results_long, 'MSE')
+p2 <- plot_metric(xgb.k5.results_long, 'RMSE')
+p3 <- plot_metric(xgb.k5.results_long, 'MAE')
+p4 <- plot_metric(xgb.k5.results_long, 'R2')
 
-Decision Tree
+# arrange the plots in a 2x2 grid
+gridExtra::grid.arrange(p1, p2, p3, p4, ncol = 2, nrow = 2)
+
+plot(p1)
+plot(p2)
+plot(p3)
+plot(p4)
+```
+
+Decision Trees
 ```{r}
 #### Decision Trees ####
 
-# Error in tree: "factor predictors must have at most 32 levels" is thrown.
-# Basically, it becomes computationally expensive to create so many splits in your data, since you are selecting the best split out of all 2^32 (approx) possible splits.
+# error in tree: "factor predictors must have at most 32 levels" is thrown
 
+# basically, it becomes computationally expensive to create so many splits in your data, since you are selecting the best split out of all 2^32 (approx) possible splits
 
-# Fit a decision tree model on the training data
+# fit a decision tree model on the training data
 #tm <- tree(int_rate ~ ., data = train_data)
 
-# Make predictions on the training and testing data
+# make predictions on the training and testing data
 #tm.train_predictions <- predict(tm, newdata = train_data)
 #tm.test_predictions <- predict(tm, newdata = test_data)
 
-# Calculate Mean Squared Error (MSE) for training and testing
+# calculate Mean Squared Error (MSE) for training and testing
 #tm.train_mse <- mean((tm.train_predictions - train_data$int_rate)^2)
 #tm.test_mse <- mean((tm.test_predictions - test_data$int_rate)^2)
 
-# Calculate Root Mean Squared Error (RMSE) for training and testing
+# calculate Root Mean Squared Error (RMSE) for training and testing
 #tm.train_rmse <- sqrt(tm.train_mse)
 #tm.test_rmse <- sqrt(tm.test_mse)
 
-# Calculate Mean Absolute Error (MAE) for training and testing
+# calculate Mean Absolute Error (MAE) for training and testing
 #tm.train_mae <- mean(abs(tm.train_predictions - train_data$int_rate))
 #tm.test_mae <- mean(abs(tm.test_predictions - test_data$int_rate))
 
-# Calculate R-squared (R²) for training and testing
+# calculate R-squared (R²) for training and testing
 #tm.train_r2 <- 1 - (sum((train_data$int_rate - tm.train_predictions)^2) / sum((train_data$int_rate - mean(train_data$int_rate))^2))
 #tm.test_r2 <- 1 - (sum((test_data$int_rate - tm.test_predictions)^2) / sum((test_data$int_rate - mean(test_data$int_rate))^2))
 
-# Display the metrics
+# display the metrics
 #cat("Training MSE:", tm.train_mse, "\n")
 #cat("Testing MSE:", tm.test_mse, "\n")
 #cat("Training RMSE:", tm.train_rmse, "\n")
@@ -775,34 +874,34 @@ Random Forest
 ```{r}
 #### Random Forest ####
 
-# Train a Random Forest model
+# train a Random Forest model
 rf <- ranger(formula = int_rate ~ ., data = train_data, num.trees = 500, verbose=TRUE, importance = "impurity", oob.error = TRUE)
 
-# Print the model summary
+# print the model summary
 print("Random Forest Model Summary:")
 print(rf)
 
-# Make predictions on the training and testing data
+# make predictions on the training and testing data
 rf.train_predictions <- predict(rf, data = train_data)
 rf.test_predictions <- predict(rf, data = test_data)
 
-# Calculate Mean Squared Error (MSE) for training and testing
+# calculate Mean Squared Error (MSE) for training and testing
 rf.train_mse <- mean((rf.train_predictions$predictions - train_data$int_rate)^2)
 rf.test_mse <- mean((rf.test_predictions$predictions - test_data$int_rate)^2)
 
-# Calculate Root Mean Squared Error (RMSE) for training and testing
+# calculate Root Mean Squared Error (RMSE) for training and testing
 rf.train_rmse <- sqrt(rf.train_mse)
 rf.test_rmse <- sqrt(rf.test_mse)
 
-# Calculate Mean Absolute Error (MAE) for training and testing
+# calculate Mean Absolute Error (MAE) for training and testing
 rf.train_mae <- mean(abs(rf.train_predictions$predictions - train_data$int_rate))
 rf.test_mae <- mean(abs(rf.test_predictions$predictions - test_data$int_rate))
 
-# Calculate R-squared (R²) for training and testing
+# calculate R-squared (R²) for training and testing
 rf.train_r2 <- 1 - (sum((train_data$int_rate - rf.train_predictions$predictions)^2) / sum((train_data$int_rate - mean(train_data$int_rate))^2))
 rf.test_r2 <- 1 - (sum((test_data$int_rate - rf.test_predictions$predictions)^2) / sum((test_data$int_rate - mean(test_data$int_rate))^2))
 
-# Display the metrics
+# display the metrics
 cat("Training MSE:", rf.train_mse, "\n")
 cat("Testing MSE:", rf.test_mse, "\n")
 cat("Training RMSE:", rf.train_rmse, "\n")
@@ -811,38 +910,20 @@ cat("Training MAE:", rf.train_mae, "\n")
 cat("Testing MAE:", rf.test_mae, "\n")
 cat("Training R-squared (R²):", rf.train_r2, "\n")
 cat("Testing R-squared (R²):", rf.test_r2, "\n")
-#rf <- randomForest(int_rate~., data=train_data, ntree = 5, mtry = 3)
-#bag.boston=randomForest(medv~.,data=Boston,subset=train, mtry=13,importance =TRUE)
-#print(rf)
-
-# Set the number of cores you want to use
-#num_cores <- 6  # Adjust this number based on your system's capabilities
-
-# Register parallel backend
-#cl <- makeCluster(num_cores)
-#registerDoParallel(cl)
-
-# Assuming 'lc_data' is your dataset
-#rf_model <- foreach(ntree = rep(100, num_cores), .packages = 'randomForest') %dopar% {
-#    randomForest(int_rate ~ ., data = lc_data, ntree = ntree, mtry = sqrt(ncol(lc_data)))
-#}
-
-# After training, stop the cluster to release the cores:
-#stopCluster(cl)
 ```
 Boosting
 ```{r}
 #### Boosting ####
 
-# Define the target variable for training and testing
+# define the target variable for training and testing
 xgb.y_train <- train_data$int_rate
-xgb.y_test <- test_data$int_rate  # Use test_data for testing
+xgb.y_test <- test_data$int_rate
 
-# Define the feature matrix for training and testing (exclude the target variable)
+# define the feature matrix for training and testing (exclude the target variable)
 xgb.X_train <- train_data[, -which(names(train_data) == 'int_rate')]
-xgb.X_test <- test_data[, -which(names(test_data) == 'int_rate')]  # Use test_data for testing
+xgb.X_test <- test_data[, -which(names(test_data) == 'int_rate')]
 
-# Fit a gradient boosting regression model using xgboost
+# fit a gradient boosting regression model using xgboost
 xgb <- xgboost(
   data = as.matrix(xgb.X_train),
   label = xgb.y_train,
@@ -850,27 +931,27 @@ xgb <- xgboost(
   verbose = 0
 )
 
-# Make predictions on the training and testing data
+# make predictions on the training and testing data
 xgb.train_predictions <- predict(xgb, newdata = as.matrix(xgb.X_train))
 xgb.test_predictions <- predict(xgb, newdata = as.matrix(xgb.X_test))
 
-# Calculate Mean Squared Error (MSE) for training and testing
+# calculate Mean Squared Error (MSE) for training and testing
 xgb.train_mse <- mean((xgb.train_predictions - xgb.y_train)^2)
 xgb.test_mse <- mean((xgb.test_predictions - xgb.y_test)^2)
 
-# Calculate Root Mean Squared Error (RMSE) for training and testing
+# calculate Root Mean Squared Error (RMSE) for training and testing
 xgb.train_rmse <- sqrt(xgb.train_mse)
 xgb.test_rmse <- sqrt(xgb.test_mse)
 
-# Calculate Mean Absolute Error (MAE) for training and testing
+# calculate Mean Absolute Error (MAE) for training and testing
 xgb.train_mae <- mean(abs(xgb.train_predictions - xgb.y_train))
 xgb.test_mae <- mean(abs(xgb.test_predictions - xgb.y_test))
 
-# Calculate R-squared (R²) for training and testing
+# calculate R-squared (R²) for training and testing
 xgb.train_r2 <- 1 - (sum((xgb.y_train - xgb.train_predictions)^2) / sum((xgb.y_train - mean(xgb.y_train))^2))
 xgb.test_r2 <- 1 - (sum((xgb.y_test - xgb.test_predictions)^2) / sum((xgb.y_test - mean(xgb.y_test))^2))
 
-# Display the metrics
+# display the metrics
 cat("Training MSE:", xgb.train_mse, "\n")
 cat("Testing MSE:", xgb.test_mse, "\n")
 cat("Training RMSE:", xgb.train_rmse, "\n")
@@ -883,7 +964,7 @@ cat("Testing R-squared (R²):", xgb.test_r2, "\n")
 Following, a scatter plot of actual vs predicted training values for each model is plot.
 This plot helps us visualize how well each model's predictions align with the actual data points.
 ```{r}
-# Create a scatter plot function
+# create a scatter plot function
 create_scatter_plot <- function(actual_values, predicted_values, model_name) {
   model_comparison_data <- data.frame(
     Actual = actual_values,
@@ -892,7 +973,7 @@ create_scatter_plot <- function(actual_values, predicted_values, model_name) {
   
   scatter_plot <- ggplot(model_comparison_data, aes(x = Actual, y = Predicted)) +
     geom_point() +
-    geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +  # Add a diagonal reference line
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +  # add a diagonal reference line
     labs(x = "Actual Training Values", y = "Predicted Training Values", title = model_name) +
     theme_minimal() +
     ylim(-50, 50)
@@ -900,7 +981,7 @@ create_scatter_plot <- function(actual_values, predicted_values, model_name) {
   return(scatter_plot)
 }
 
-# Create scatter plots for each model
+# create scatter plots for each model
 lm_scatter_plot <- create_scatter_plot(
   actual_values = train_data$int_rate,
   predicted_values = lm.train_predictions,
@@ -919,7 +1000,7 @@ xgb_scatter_plot <- create_scatter_plot(
   model_name = "XGBoost"
 )
 
-# Display the scatter plots separately
+# display the scatter plots separately
 print(lm_scatter_plot)
 print(rf_scatter_plot)
 print(xgb_scatter_plot)
@@ -927,7 +1008,7 @@ print(xgb_scatter_plot)
 Following, a scatter plot of actual vs predicted testing values for each model is plot.
 This plot helps us visualize how well each model's predictions align with the actual data points.
 ```{r}
-# Create a scatter plot function
+# create a scatter plot function
 create_scatter_plot <- function(actual_values, predicted_values, model_name) {
   model_comparison_data <- data.frame(
     Actual = actual_values,
@@ -936,7 +1017,7 @@ create_scatter_plot <- function(actual_values, predicted_values, model_name) {
   
   scatter_plot <- ggplot(model_comparison_data, aes(x = Actual, y = Predicted)) +
     geom_point() +
-    geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +  # Add a diagonal reference line
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +  # add a diagonal reference line
     labs(x = "Actual Testing Values", y = "Predicted Testing Values", title = model_name) +
     theme_minimal() +
     ylim(-50, 50) +
@@ -945,7 +1026,7 @@ create_scatter_plot <- function(actual_values, predicted_values, model_name) {
   return(scatter_plot)
 }
 
-# Create scatter plots for each model
+# create scatter plots for each model
 lm_scatter_plot <- create_scatter_plot(
   actual_values = test_data$int_rate,
   predicted_values = lm.test_predictions,
@@ -964,7 +1045,7 @@ xgb_scatter_plot <- create_scatter_plot(
   model_name = "XGBoost"
 )
 
-# Display the scatter plots separately
+# display the scatter plots separately
 print(lm_scatter_plot)
 print(rf_scatter_plot)
 print(xgb_scatter_plot)
@@ -972,7 +1053,7 @@ print(xgb_scatter_plot)
 
 Residual plots can help identify patterns in prediction errors and assess whether the assumptions of linear regression (if applicable) are met.
 ```{r}
-# Create a residual plot function
+# create a residual plot function
 create_residual_plot <- function(actual_values, predicted_values, model_name) {
   residuals <- actual_values - predicted_values
   residual_data <- data.frame(
@@ -991,7 +1072,7 @@ create_residual_plot <- function(actual_values, predicted_values, model_name) {
   return(residual_plot)
 }
 
-# Create residual plots for each model
+# create residual plots for each model
 lm_residual_plot <- create_residual_plot(
   actual_values = train_data$int_rate,
   predicted_values = lm.train_predictions,
@@ -1010,31 +1091,14 @@ xgb_residual_plot <- create_residual_plot(
   model_name = "XGBoost"
 )
 
-# Display the residual plots separately
+# display the residual plots separately
 print(lm_residual_plot)
 print(rf_residual_plot)
 print(xgb_residual_plot)
 ```
-From the plots above we can clearly see that:
 
--   Linear Regression Residual Plot:
-    -   Pattern: There appears to be a clear pattern in the residuals, with a funnel shape that widens as the predicted values increase. This suggests heteroscedasticity, where the variance of the residuals is not constant across the range of predicted values.
-    -   Outliers: There are several prominent outliers, particularly for higher predicted values. These points significantly deviate from the red dashed line, which represents zero residuals.
--   Random Forest Residual Plot:
-    -   Pattern: The residuals seem to be randomly dispersed around the zero line at lower predicted values, which is a good sign. However, as predicted values increase, the residuals also increase, suggesting a systematic error in the model predictions.
-    -   Concentration: There is a higher concentration of residuals around the zero line compared to the Linear Regression model, which could indicate a better fit
--    XGBoost Residual Plot:
-    -   Pattern: The residuals in this plot are more evenly dispersed across the predicted values than in the Linear Regression plot, suggesting a more consistent variance (homoscedasticity) and potentially a better fit.
-    -   Outliers: This plot also shows outliers, but they do not appear as extreme as in the Linear Regression plot. The spread of residuals is narrower compared to the Random Forest plot.
--   Comparison:
-    -   Heteroscedasticity: The Linear Regression model exhibits clear heteroscedasticity, which is a sign of model inadequacy. This could be improved with transformations or using models that handle non-constant variance better.
-    -   Model Fit: The Random Forest model seems to fit the lower range of predicted values well but shows increasing residuals with higher predicted values, which could indicate overfitting or a lack of generalization for higher values.
-    -   Consistency: The XGBoost model seems to show a more consistent spread of residuals around the zero line, which is indicative of a model that has a consistent performance across the range of predicted values.
-    -   Outliers: All three models have outliers, but their impact seems most pronounced in the Linear Regression model.
-
-This visualization can help you compare the distribution of prediction errors across models.
 ```{r}
-# Create a density plot function for residuals
+# create a density plot function for residuals
 create_residual_density_plot <- function(actual_values, predicted_values, model_name) {
   residuals <- actual_values - predicted_values
   residual_data <- data.frame(Residuals = residuals)
@@ -1050,7 +1114,7 @@ create_residual_density_plot <- function(actual_values, predicted_values, model_
   return(density_plot)
 }
 
-# Create density plots for residuals for each model
+# create density plots for residuals for each model
 lm_residual_density_plot <- create_residual_density_plot(
   actual_values = train_data$int_rate,
   predicted_values = lm.train_predictions,
@@ -1069,7 +1133,7 @@ xgb_residual_density_plot <- create_residual_density_plot(
   model_name = "XGBoost"
 )
 
-# Display the density plots separately
+# display the density plots separately
 print(lm_residual_density_plot)
 print(rf_residual_density_plot)
 print(xgb_residual_density_plot)
@@ -1078,14 +1142,14 @@ print(xgb_residual_density_plot)
 This visualization can help you compare the distribution of prediction errors across models through histograms.
 
 ```{r}
-# Create a histogram plot function for residuals with a red density curve
+# create a histogram plot function for residuals with a red density curve
 create_residual_histogram_plot <- function(actual_values, predicted_values, model_name) {
   residuals <- actual_values - predicted_values
   residual_data <- data.frame(Residuals = residuals)
   
   histogram_plot <- ggplot(residual_data, aes(x = Residuals)) +
-    geom_histogram(aes(y = after_stat(density)), bins = 30, fill = "skyblue", color = "black", alpha = 0.7) +  # Use density on the y-axis for the histogram
-    geom_density(color = "red", linewidth = 1.5) +  # Add the density plot in red
+    geom_histogram(aes(y = after_stat(density)), bins = 30, fill = "skyblue", color = "black", alpha = 0.7) +  # use density on the y-axis for the histogram
+    geom_density(color = "red", linewidth = 1.5) +  # add the density plot in red
     labs(x = "Residuals", y = "Density", title = paste("Residual Histogram Plot with Density Curve -", model_name)) +
     theme_minimal() +
     xlim(-20,20) + 
@@ -1094,7 +1158,7 @@ create_residual_histogram_plot <- function(actual_values, predicted_values, mode
   return(histogram_plot)
 }
 
-# Create histogram plots for residuals for each model
+# create histogram plots for residuals for each model
 lm_residual_histogram_plot <- create_residual_histogram_plot(
   actual_values = train_data$int_rate,
   predicted_values = lm.train_predictions,
@@ -1113,7 +1177,7 @@ xgb_residual_histogram_plot <- create_residual_histogram_plot(
   model_name = "XGBoost"
 )
 
-# Display the histogram plots separately
+# display the histogram plots separately
 print(lm_residual_histogram_plot)
 print(rf_residual_histogram_plot)
 print(xgb_residual_histogram_plot)
@@ -1122,7 +1186,7 @@ print(xgb_residual_histogram_plot)
 For each model a bar chart that displays the R-squared (coefficient of determination) values is created.
 R-squared measures the proportion of variance in the target variable explained by the model. Higher R-squared values indicate better model fit.
 ```{r}
-# Create a data frame with R-squared values for each model
+# create a data frame with R-squared values for each model
 model_names <- c("Linear Regression", "Random Forest", "XGBoost")
 r_squared_values_train <- c(
   lm.train_r2,
@@ -1140,7 +1204,7 @@ r_squared_data_train <- data.frame(Model = factor(model_names),
 r_squared_data_test <- data.frame(Model = factor(model_names),
                               R_squared = r_squared_values_test)
 
-# Create the R-squared comparison bar chart
+# create the R-squared comparison bar chart
 r_squared_bar_chart_train <- ggplot(r_squared_data_train, aes(x = Model, y = R_squared, fill = Model)) +
   geom_bar(stat = "identity") +
   labs(x = "Model", y = "R-squared (R²)", title = "R-squared Comparison Training") +
@@ -1154,14 +1218,14 @@ r_squared_bar_chart_test <- ggplot(r_squared_data_test, aes(x = Model, y = R_squ
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
   ylim(0,1)
 
-# Display the R-squared comparison bar chart
+# display the R-squared comparison bar chart
 print(r_squared_bar_chart_train)
 print(r_squared_bar_chart_test)
 ```
 A bar chart that compares the MAE or RMSE values, is generated for each model.
 These metrics quantify the average prediction errors of each model, and lower values are preferred.
 ```{r}
-# Create a data frame with MAE and RMSE values for each model
+# create a data frame with MAE and RMSE values for each model
 model_names <- c("Linear Regression", "Random Forest", "XGBoost","Linear Regression", "Random Forest", "XGBoost")
 error_values_train <- c(
   lm.train_mae,
@@ -1186,7 +1250,7 @@ model_errors_train <- data.frame(Model = factor(model_names, levels = c("Linear 
                 Error = error_values_train, Type = error_type)
 model_errors_test <- data.frame(Model = factor(model_names, levels = c("Linear Regression", "Random Forest", "XGBoost")),
                 Error = error_values_test, Type = error_type)
-# Create the MAE or RMSE comparison bar chart
+# create the MAE or RMSE comparison bar chart
 error_bar_chart_train <- ggplot(model_errors_train, aes(x = Model, y = Error, fill = Type)) +
   geom_bar(stat = "identity", position = "dodge") +
   labs(x = "Model", y = "Error Value", title = "Training MAE and RMSE Comparison") +
@@ -1201,7 +1265,7 @@ error_bar_chart_test <- ggplot(model_errors_test, aes(x = Model, y = Error, fill
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
   ylim(0, 4)
 
-# Display the MAE and RMSE comparison bar chart
+# display the MAE and RMSE comparison bar chart
 print(error_bar_chart_train)
 print(error_bar_chart_test)
 ```
@@ -1212,53 +1276,181 @@ print(error_bar_chart_test)
 v1 <- vip(rf, title = "Ranger", num_features = 20) 
 plot(v1)
 ```
+Feature Selection from the variable importance's analysis:
 
-
-Learning curve using RMSE and R^2:
 ```{r}
-# TODO: change the x-axes
-# Create a data frame with RMSE and R-squared values for each model and sample size
-model_names <- c("Linear Regression", "Random Forest", "XGBoost")
-sample_sizes <- seq(10, nrow(train_data), by = 10)  # Adjust the sample sizes as needed
+imp.variables <- lc_data[, v1$data$Variable]
+imp.variables$int_rate <- lc_data$int_rate
+imp.train_indices <- createDataPartition(imp.variables$int_rate, p = 0.8, list = FALSE)
 
-# Create data frames with RMSE and R-squared values for each model
-rmse_data <- data.frame(
-  Model = rep(model_names, each = length(sample_sizes)),
-  Sample_Size = rep(sample_sizes, times = length(model_names)),
-  RMSE = c(
-    lm.train_rmse, rf.train_rmse, xgb.train_rmse
-  )
-)
-
-r_squared_data <- data.frame(
-  Model = rep(model_names, each = length(sample_sizes)),
-  Sample_Size = rep(sample_sizes, times = length(model_names)),
-  R_squared = c(
-    lm.train_r2, rf.train_r2, xgb.train_r2
-  )
-)
-
-# Create RMSE learning curve
-rmse_curve <- ggplot(rmse_data, aes(x = Sample_Size, y = RMSE, color = Model)) +
-  geom_line() +
-  labs(x = "Sample Size", y = "RMSE", title = "RMSE Learning Curve") +
-  theme_minimal()
-
-# Create R-squared learning curve
-r_squared_curve <- ggplot(r_squared_data, aes(x = Sample_Size, y = R_squared, color = Model)) +
-  geom_line() +
-  labs(x = "Sample Size", y = "R-squared", title = "R-squared Learning Curve") +
-  theme_minimal()
-
-# Display the RMSE and R-squared learning curves
-print(rmse_curve)
-print(r_squared_curve)
+# create training and testing datasets
+imp.train_data <- imp.variables[imp.train_indices, ]
+imp.test_data <- imp.variables[-imp.train_indices, ]
 ```
 
+```{r}
+#### Linear Regression with only importance variables ####
 
+imp.lm.fit <- lm(int_rate ~ ., data = imp.train_data)
 
-Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+# make predictions on the training and testing data
+imp.lm.train_predictions <- predict(imp.lm.fit, newdata = imp.train_data)
+imp.lm.test_predictions <- predict(imp.lm.fit, newdata = imp.test_data)
 
-When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+# calculate Mean Squared Error (MSE) for training and testing
+imp.lm.train_mse <- mean((imp.lm.train_predictions - imp.train_data$int_rate)^2)
+imp.lm.test_mse <- mean((imp.lm.test_predictions - imp.test_data$int_rate)^2)
 
-The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+# calculate Root Mean Squared Error (RMSE) for training and testing
+imp.lm.train_rmse <- sqrt(imp.lm.train_mse)
+imp.lm.test_rmse <- sqrt(imp.lm.test_mse)
+
+# calculate Mean Absolute Error (MAE) for training and testing
+imp.lm.train_mae <- mean(abs(imp.lm.train_predictions - imp.train_data$int_rate))
+imp.lm.test_mae <- mean(abs(imp.lm.test_predictions - imp.test_data$int_rate))
+
+# calculate R-squared (R²) for training and testing
+imp.lm.train_r2 <- 1 - (sum((imp.train_data$int_rate - imp.lm.train_predictions)^2) / sum((imp.train_data$int_rate - mean(imp.train_data$int_rate))^2))
+imp.lm.test_r2 <- 1 - (sum((imp.test_data$int_rate - imp.lm.test_predictions)^2) / sum((imp.test_data$int_rate - mean(imp.test_data$int_rate))^2))
+
+# display the metrics
+cat("Training MSE:", imp.lm.train_mse, "\n")
+cat("Testing MSE:", imp.lm.test_mse, "\n")
+cat("Training RMSE:", imp.lm.train_rmse, "\n")
+cat("Testing RMSE:", imp.lm.test_rmse, "\n")
+cat("Training MAE:", imp.lm.train_mae, "\n")
+cat("Testing MAE:", imp.lm.test_mae, "\n")
+cat("Training R-squared (R²):", imp.lm.train_r2, "\n")
+cat("Testing R-squared (R²):", imp.lm.test_r2, "\n")
+```
+
+```{r}
+#### Random Forest with only importance variables ####
+
+# train a Random Forest model
+imp.rf <- ranger(formula = int_rate ~ ., data = imp.train_data, num.trees = 500, verbose=TRUE, importance = "impurity", oob.error = TRUE)
+
+# print the model summary
+print("Random Forest Model Summary:")
+print(imp.rf)
+
+# make predictions on the training and testing data
+imp.rf.train_predictions <- predict(imp.rf, data = imp.train_data)
+imp.rf.test_predictions <- predict(imp.rf, data = imp.test_data)
+
+# calculate Mean Squared Error (MSE) for training and testing
+imp.rf.train_mse <- mean((imp.rf.train_predictions$predictions - imp.train_data$int_rate)^2)
+imp.rf.test_mse <- mean((imp.rf.test_predictions$predictions - imp.test_data$int_rate)^2)
+
+# calculate Root Mean Squared Error (RMSE) for training and testing
+imp.rf.train_rmse <- sqrt(imp.rf.train_mse)
+imp.rf.test_rmse <- sqrt(imp.rf.test_mse)
+
+# calculate Mean Absolute Error (MAE) for training and testing
+imp.rf.train_mae <- mean(abs(imp.rf.train_predictions$predictions - imp.train_data$int_rate))
+imp.rf.test_mae <- mean(abs(imp.rf.test_predictions$predictions - imp.test_data$int_rate))
+
+# calculate R-squared (R²) for training and testing
+imp.rf.train_r2 <- 1 - (sum((imp.train_data$int_rate - imp.rf.train_predictions$predictions)^2) / sum((imp.train_data$int_rate - mean(imp.train_data$int_rate))^2))
+imp.rf.test_r2 <- 1 - (sum((test_data$int_rate - rf.test_predictions$predictions)^2) / sum((imp.test_data$int_rate - mean(imp.test_data$int_rate))^2))
+
+# display the metrics
+cat("Training MSE:", imp.rf.train_mse, "\n")
+cat("Testing MSE:", imp.rf.test_mse, "\n")
+cat("Training RMSE:", imp.rf.train_rmse, "\n")
+cat("Testing RMSE:", imp.rf.test_rmse, "\n")
+cat("Training MAE:", imp.rf.train_mae, "\n")
+cat("Testing MAE:", imp.rf.test_mae, "\n")
+cat("Training R-squared (R²):", imp.rf.train_r2, "\n")
+cat("Testing R-squared (R²):", imp.rf.test_r2, "\n")
+```
+
+```{r}
+#### Boosting with only importance variables ####
+
+# define the target variable for training and testing
+imp.xgb.y_train <- imp.train_data$int_rate
+imp.xgb.y_test <- imp.test_data$int_rate
+
+# define the feature matrix for training and testing (exclude the target variable)
+imp.xgb.X_train <- imp.train_data[, -which(names(imp.train_data) == 'int_rate')]
+imp.xgb.X_test <- imp.test_data[, -which(names(imp.test_data) == 'int_rate')]
+
+# fit a gradient boosting regression model using xgboost
+imp.xgb <- xgboost(
+  data = as.matrix(imp.xgb.X_train),
+  label = imp.xgb.y_train,
+  nrounds = 100,
+  verbose = 0
+)
+
+# make predictions on the training and testing data
+imp.xgb.train_predictions <- predict(imp.xgb, newdata = as.matrix(imp.xgb.X_train))
+imp.xgb.test_predictions <- predict(imp.xgb, newdata = as.matrix(imp.xgb.X_test))
+
+# calculate Mean Squared Error (MSE) for training and testing
+imp.xgb.train_mse <- mean((imp.xgb.train_predictions - imp.xgb.y_train)^2)
+imp.xgb.test_mse <- mean((imp.xgb.test_predictions - imp.xgb.y_test)^2)
+
+# calculate Root Mean Squared Error (RMSE) for training and testing
+imp.xgb.train_rmse <- sqrt(imp.xgb.train_mse)
+imp.xgb.test_rmse <- sqrt(imp.xgb.test_mse)
+
+# calculate Mean Absolute Error (MAE) for training and testing
+imp.xgb.train_mae <- mean(abs(imp.xgb.train_predictions - imp.xgb.y_train))
+imp.xgb.test_mae <- mean(abs(imp.xgb.test_predictions - imp.xgb.y_test))
+
+# calculate R-squared (R²) for training and testing
+imp.xgb.train_r2 <- 1 - (sum((imp.xgb.y_train - imp.xgb.train_predictions)^2) / sum((imp.xgb.y_train - mean(imp.xgb.y_train))^2))
+imp.xgb.test_r2 <- 1 - (sum((imp.xgb.y_test - imp.xgb.test_predictions)^2) / sum((imp.xgb.y_test - mean(imp.xgb.y_test))^2))
+
+# display the metrics
+cat("Training MSE:", imp.xgb.train_mse, "\n")
+cat("Testing MSE:", imp.xgb.test_mse, "\n")
+cat("Training RMSE:", imp.xgb.train_rmse, "\n")
+cat("Testing RMSE:", imp.xgb.test_rmse, "\n")
+cat("Training MAE:", imp.xgb.train_mae, "\n")
+cat("Testing MAE:", imp.xgb.test_mae, "\n")
+cat("Training R-squared (R²):", imp.xgb.train_r2, "\n")
+cat("Testing R-squared (R²):", imp.xgb.test_r2, "\n")
+```
+
+The dataset was filtered by the 20 variables with the most importance (from the rf results). As we can see above, the errors of each model are more or less the errors with the double variables we had before, so filtering by these 20 "important variables" does not seem making sense...
+
+Hyperparameter Tuning for XGBoosting:
+
+```{r}
+# define the number of cores
+numCores <- detectCores() - 1
+
+# register doParallel as the backend for parallel execution
+registerDoParallel(cores=numCores)
+
+# define the control using a cross-validation approach
+train_control <- trainControl(method = "cv", number = 5, verboseIter = TRUE)
+
+# define the grid of hyperparameters to search over
+xgb.grid <- expand.grid(
+  nrounds = c(100, 200, 300),
+  eta = c(0.01, 0.05, 0.1),
+  max_depth = c(3, 6, 9),
+  gamma = c(0, 0.1, 0.2),
+  colsample_bytree = c(0.5, 0.8, 1),
+  min_child_weight = c(1, 5, 10),
+  subsample = c(0.5, 0.75, 1)
+)
+
+# train the model
+xgb.tuned <- train(
+  x = train_data, y = xgb.y_train,
+  method = "xgbTree",
+  trControl = train_control,
+  tuneGrid = xgb.grid
+)
+
+# view the best tuning parameters
+print(xgb.tuned$bestTune)
+
+# stop the parallel backend
+stopImplicitCluster()
+```
