@@ -8,7 +8,6 @@ output: html_notebook
 Load needed libraries
 
 ```{r}
-library(fastDummies)
 library(readr)
 library(ggplot2)
 library(dplyr)
@@ -45,8 +44,8 @@ lc_data <- subset(lc_data, select = -c(collection_recovery_fee, installment, iss
                                        last_pymnt_amnt, last_pymnt_d, loan_status,
                                        next_pymnt_d, out_prncp, out_prncp_inv,
                                        pymnt_plan, recoveries, total_pymnt,
-                                       total_pymnt_inv,total_rec_int, total_rec_late_fee,                                                  total_rec_prncp))
-
+                                       total_pymnt_inv,total_rec_int, total_rec_late_fee, 
+                                       total_rec_prncp))
 ```
 
 ```{r}
@@ -208,7 +207,7 @@ lc_data <- lc_data %>% select(-verification_status_joint, -application_type)
 ```
 
 
-Let's checl if other is NA or a real value for purpose. It's a real one, so we don't have to handle it.
+Let's check if other is NA or a real value for purpose. It's a real one, so we don't have to handle it.
 ```{r}
 lc_data$purpose <- as.factor(lc_data$purpose)
 ggplot(data = lc_data, mapping = aes(x=int_rate,y=purpose)) + geom_boxplot()
@@ -523,7 +522,7 @@ ridge.target_test <- test_data$int_rate
 
 ridge.fit <- glmnet(ridge.predictors_train, ridge.target_train, alpha = 0)
 
-plot(ridge.fit, label=TRUE)
+plot(ridge.fit, label=TRUE, xlab = "L2 Norm")
 
 # make predictions on the training and testing data
 ridge.train_predictions <- predict(ridge.fit, newdata = train_data, newx = ridge.predictors_train)
@@ -555,8 +554,6 @@ cat("Testing MAE:", ridge.test_mae, "\n")
 cat("Training R-squared (R²):", ridge.train_r2, "\n")
 cat("Testing R-squared (R²):", ridge.test_r2, "\n")
 ```
-
-# TODO: test with k=10
 
 K fold using K=5:
 ```{r}
@@ -806,6 +803,264 @@ p1 <- plot_metric(xgb.k5.results_long, 'MSE')
 p2 <- plot_metric(xgb.k5.results_long, 'RMSE')
 p3 <- plot_metric(xgb.k5.results_long, 'MAE')
 p4 <- plot_metric(xgb.k5.results_long, 'R2')
+
+# arrange the plots in a 2x2 grid
+grid.arrange(p1, p2, p3, p4, ncol = 2, nrow = 2)
+
+plot(p1)
+plot(p2)
+plot(p3)
+plot(p4)
+```
+
+K fold using K=10:
+```{r}
+# define the number of folds for cross-validation
+num_folds <- 10
+folds <- createFolds(train_data$int_rate, k = num_folds, list = TRUE)
+```
+
+
+K fold using K=10 and linear regression:
+```{r}
+#### Linear Regresion applying Cross Validation with k=10  ####
+
+# initialize lists to store models and their results
+lm.k10.models <- list()
+lm.k10.results <- data.frame()
+
+# perform k-fold cross-validation
+for(i in seq_along(folds)) {
+  # split the data into training and testing for the current fold
+  train_indices <- folds[[i]]
+  test_indices <- setdiff(seq_len(nrow(train_data)), train_indices)
+  
+  train_data_fold <- train_data[train_indices, ]
+  test_data_fold <- train_data[test_indices, ]
+  
+  # fit the model on the training fold
+  lm.k10 <- lm(int_rate ~ ., data = train_data_fold)
+  lm.k10.models[[i]] <- lm.k10  # Store the model
+  
+  # make predictions on the training and testing fold
+  lm.k10.train_predictions <- predict(lm.k10, newdata = train_data_fold)
+  lm.k10.test_predictions <- predict(lm.k10, newdata = test_data_fold)
+  
+  # calculate metrics for training fold
+  lm.k10.train_mse <- mean((lm.k10.train_predictions - train_data_fold$int_rate)^2)
+  lm.k10.train_rmse <- sqrt(lm.k10.train_mse)
+  lm.k10.train_mae <- mean(abs(lm.k10.train_predictions - train_data_fold$int_rate))
+  lm.k10.train_r2 <- summary(lm.k10)$r.squared
+  
+  # calculate metrics for testing fold
+  lm.k10.test_mse <- mean((lm.k10.test_predictions - test_data_fold$int_rate)^2)
+  lm.k10.test_rmse <- sqrt(lm.k10.test_mse)
+  lm.k10.test_mae <- mean(abs(lm.k10.test_predictions - test_data_fold$int_rate))
+  lm.k10.test_r2 <- 1 - (sum((test_data_fold$int_rate - lm.k10.test_predictions)^2) / sum((test_data_fold$int_rate - mean(test_data_fold$int_rate))^2))
+  
+  # store metrics in the results dataframe
+  lm.k10.results <- rbind(lm.k10.results, data.frame(
+    Fold = i,
+    Train_MSE = lm.k10.train_mse, Test_MSE = lm.k10.test_mse,
+    Train_RMSE = lm.k10.train_rmse, Test_RMSE = lm.k10.test_rmse,
+    Train_MAE = lm.k10.train_mae, Test_MAE = lm.k10.test_mae,
+    Train_R2 = lm.k10.train_r2, Test_R2 = lm.k10.test_r2
+  ))
+}
+
+# display the models and their metrics
+print(lm.k10.models)
+print(lm.k10.results)
+```
+
+```{r}
+plot_metric <- function(results_long, metric) {
+    # adjust the variable names based on the metric
+    variables <- if (metric == "OOB") {
+        "OOB_Error"
+    } else {
+        c(paste0('Train_', metric), paste0('Test_', metric))
+    }
+    title <- if (metric == "OOB") {
+        paste0(metric, ' per Fold')
+    } else {
+        paste0('Train vs Test ', metric, ' per Fold')
+    }
+    
+    ggplot(results_long[results_long$variable %in% variables, ],
+           aes(x = Fold, y = value, color = variable)) +
+    geom_line() +
+    geom_point() +
+    theme_minimal() +
+    labs(title = title,
+         x = 'Fold',
+         y = metric)
+}
+```
+
+
+```{r}
+# reshape data for plotting
+lm.k10.results_long <- melt(lm.k10.results, id.vars = 'Fold')
+
+# plot for each metric
+p1 <- plot_metric(lm.k10.results_long, 'MSE')
+p2 <- plot_metric(lm.k10.results_long, 'RMSE')
+p3 <- plot_metric(lm.k10.results_long, 'MAE')
+p4 <- plot_metric(lm.k10.results_long, 'R2')
+
+# arrange the plots in a 2x2 grid
+grid.arrange(p1, p2, p3, p4, ncol = 2, nrow = 2)
+
+plot(p1)
+plot(p2)
+plot(p3)
+plot(p4)
+```
+
+K fold using K=10 and Random Forest:
+```{r}
+# #### Random Forest applying Cross Validation with k=10  ####
+# 
+# # initialize lists to store models and their results
+# rf.k10.models <- list()
+# rf.k10.results <- data.frame()
+# 
+# # perform k-fold cross-validation
+# for(i in seq_along(folds)) {
+#   # split the data into training and testing for the current fold
+#   train_indices <- folds[[i]]
+#   test_indices <- setdiff(seq_len(nrow(train_data)), train_indices)
+#   
+#   train_data_fold <- train_data[train_indices, ]
+#   test_data_fold <- train_data[test_indices, ]
+#   
+#   # fit the model on the training fold
+#   rf.k10 <- ranger(formula = int_rate ~ ., data = train_data, num.trees = 500, verbose=TRUE, importance = "impurity", oob.error = TRUE)
+#   rf.k10.models[[i]] <- rf.k10  # Store the model
+#   
+#   # make predictions on the training and testing fold
+#   rf.k10.train_predictions <- predict(rf.k10, data = train_data_fold)$predictions
+#   rf.k10.test_predictions <- predict(rf.k10, data = test_data_fold)$predictions
+#   
+#   # calculate metrics for training fold
+#   rf.k10.train_mse <- mean((rf.k10.train_predictions - train_data_fold$int_rate)^2)
+#   rf.k10.train_rmse <- sqrt(rf.k10.train_mse)
+#   rf.k10.train_mae <- mean(abs(rf.k10.train_predictions - train_data_fold$int_rate))
+#   rf.k10.oob_error <- rf.k10$prediction.error
+#   
+#   # calculate metrics for testing fold
+#   rf.k10.test_mse <- mean((rf.k10.test_predictions - test_data_fold$int_rate)^2)
+#   rf.k10.test_rmse <- sqrt(rf.k10.test_mse)
+#   rf.k10.test_mae <- mean(abs(rf.k10.test_predictions - test_data_fold$int_rate))
+#   rf.k10.test_r2 <- 1 - (sum((test_data_fold$int_rate - rf.k10.test_predictions)^2) / sum((test_data_fold$int_rate - mean(test_data_fold$int_rate))^2))
+#   
+#   # store metrics in the results dataframe
+#   rf.k10.results <- rbind(rf.k10.results, data.frame(
+#     Fold = i,
+#     Train_MSE = rf.k10.train_mse, Test_MSE = rf.k10.test_mse,
+#     Train_RMSE = rf.k10.train_rmse, Test_RMSE = rf.k10.test_rmse,
+#     Train_MAE = rf.k10.train_mae, Test_MAE = rf.k10.test_mae,
+#     OOB_Error = rf.k10.oob_error
+#   ))
+# }
+# 
+# # display the models and their metrics
+# print(rf.k10.models)
+# print(rf.k10.results)
+```
+```{r}
+# reshape data for plotting
+# rf.k10.results_long <- melt(rf.k10.results, id.vars = 'Fold')
+# 
+# # plot for each metric
+# p1 <- plot_metric(rf.k10.results_long, 'MSE')
+# p2 <- plot_metric(rf.k10.results_long, 'RMSE')
+# p3 <- plot_metric(rf.k10.results_long, 'MAE')
+# p4 <- plot_metric(rf.k10.results_long, 'OOB')
+# 
+# # arrange the plots in a 2x2 grid
+# grid.arrange(p1, p2, p3, p4, ncol = 2, nrow = 2)
+# 
+# plot(p1)
+# plot(p2)
+# plot(p3)
+# plot(p4)
+```
+
+K fold using K=10 and Boosting:
+```{r}
+#### Boosting applying Cross Validation with k=10  ####
+
+# initialize lists to store models and their results
+xgb.k10.models <- list()
+xgb.k10.results <- data.frame()
+
+# perform k-fold cross-validation
+for(i in seq_along(folds)) {
+  # split the data into training and testing for the current fold
+  train_indices <- folds[[i]]
+  test_indices <- setdiff(seq_len(nrow(train_data)), train_indices)
+  
+  train_data_fold <- train_data[train_indices, ]
+  test_data_fold <- train_data[test_indices, ]
+  
+  # prepare data for xgboost
+  xgb.y_train_fold <- train_data_fold$int_rate
+  xgb.X_train_fold <- as.matrix(train_data_fold[, -which(names(train_data_fold) == 'int_rate')])
+  
+  xgb.y_test_fold <- test_data_fold$int_rate
+  xgb.X_test_fold <- as.matrix(test_data_fold[, -which(names(test_data_fold) == 'int_rate')])
+  
+  # fit the xgboost model on the training fold
+  xgb.k10 <- xgboost(
+    data = xgb.X_train_fold,
+    label = xgb.y_train_fold,
+    nrounds = 100,
+    verbose = 0
+  )
+  xgb.k10.models[[i]] <- xgb.k10  # store the model
+  
+  # make predictions on the training fold
+  xgb.k10.train_predictions <- predict(xgb.k10, newdata = xgb.X_train_fold)
+  # make predictions on the testing fold
+  xgb.k10.test_predictions <- predict(xgb.k10, newdata = xgb.X_test_fold)
+  
+  # calculate metrics for training fold
+  xgb.k10.train_mse <- mean((xgb.k10.train_predictions - train_data_fold$int_rate)^2)
+  xgb.k10.train_rmse <- sqrt(xgb.k10.train_mse)
+  xgb.k10.train_mae <- mean(abs(xgb.k10.train_predictions - train_data_fold$int_rate))
+  xgb.k10.train_r2 <- 1 - (sum((xgb.y_train_fold - xgb.k10.train_predictions)^2) / sum((xgb.y_train_fold - mean(xgb.y_train_fold))^2))
+
+  # calculate metrics for testing fold
+  xgb.k10.test_mse <- mean((xgb.k10.test_predictions - xgb.y_test_fold)^2)
+  xgb.k10.test_rmse <- sqrt(xgb.k10.test_mse)
+  xgb.k10.test_mae <- mean(abs(xgb.k10.test_predictions - xgb.y_test_fold))
+  xgb.k10.test_r2 <- 1 - (sum((xgb.y_test_fold - xgb.k10.test_predictions)^2) / sum((xgb.y_test_fold - mean(xgb.y_test_fold))^2))  
+  
+  # store metrics in the results dataframe
+  xgb.k10.results <- rbind(xgb.k10.results, data.frame(
+    Fold = i,
+    Train_MSE = xgb.k10.train_mse, Test_MSE = xgb.k10.test_mse,
+    Train_RMSE = xgb.k10.train_rmse, Test_RMSE = xgb.k10.test_rmse,
+    Train_MAE = xgb.k10.train_mae, Test_MAE = xgb.k10.test_mae,
+    Train_R2 = xgb.k10.train_r2, Test_R2 = xgb.k10.test_r2
+  ))
+}
+
+# display the models and their metrics
+print(xgb.k10.models)
+print(xgb.k10.results)
+```
+```{r}
+# reshape data for plotting
+xgb.k10.results_long <- melt(xgb.k10.results, id.vars = 'Fold')
+
+# plot for each metric
+p1 <- plot_metric(xgb.k10.results_long, 'MSE')
+p2 <- plot_metric(xgb.k10.results_long, 'RMSE')
+p3 <- plot_metric(xgb.k10.results_long, 'MAE')
+p4 <- plot_metric(xgb.k10.results_long, 'R2')
 
 # arrange the plots in a 2x2 grid
 grid.arrange(p1, p2, p3, p4, ncol = 2, nrow = 2)
