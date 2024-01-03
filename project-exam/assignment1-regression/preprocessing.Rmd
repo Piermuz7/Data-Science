@@ -178,22 +178,32 @@ lc_data <- lc_data %>% filter(home_ownership %in% c("MORTGAGE","OWN","RENT"))
 lc_data$home_ownership <- as.numeric(as.factor(lc_data$home_ownership))
 ```
 
-Application joint handling:
+Most of the loan applications are Individual, this means that most of the values of the columns **dti_joint**,**annual_inc_joint** and **verification_status_joint** are Null.
+We would like to keep the information about Joint loans, this means that we can replace the Null values with 0.
 
 ```{r}
-lc_data <- lc_data %>% select(-dti_joint,-annual_inc_joint)
+nav <- c('', ' ')
+lc_data <- transform(lc_data, verification_status_joint=replace(verification_status_joint, verification_status_joint %in% nav, NA))
+lc_data <-
+  lc_data %>%
+  mutate(dti_joint = ifelse(is.na(dti_joint) == TRUE, 0, dti_joint)) %>%
+  mutate(annual_inc_joint = ifelse(is.na(annual_inc_joint) == TRUE, 0, annual_inc_joint)) %>%
+  mutate(verification_status_joint = ifelse(is.na(verification_status_joint) == TRUE, 'NA', verification_status_joint))
+
 ```
 
-Upon reviewing the summary again, it becomes apparent that there are less than 100 joint applications, constituting a small subset within the extensive dataset of around 800k rows. Through consolidating the debt-to-income ratios (dti's), we can pinpoint the data pertinent to our research objectives. Hence, it is advisable to eliminate the columns verification_status_joint and application_type to prevent introducing unwarranted variability into our analysis.
+The empty string or null value in **verification_status_joint** is replaced successfully.
 
 ```{r}
 table(lc_data$verification_status)
 table(lc_data$verification_status_joint)
 ```
-
+Then **verification_status_joint** and **verification_status** columns are converted in categorical and then numerical value.
+The column **application_type** is obsolete, since the information about whether the loan is individual or joint is already contained in the previous variables.
 ```{r}
 lc_data$verification_status <- as.numeric(as.factor(lc_data$verification_status))
-lc_data <- lc_data %>% select(-verification_status_joint, -application_type)
+lc_data$verification_status_joint <- as.numeric(as.factor(lc_data$verification_status_joint))
+lc_data <- lc_data %>% select(-application_type)
 ```
 
 
