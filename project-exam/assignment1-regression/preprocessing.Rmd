@@ -1,6 +1,8 @@
 ---
 title: "R Notebook"
-output: html_notebook
+output:
+  html_notebook: default
+  pdf_document: default
 ---
 
 # Data Pre-processing
@@ -179,22 +181,10 @@ lc_data$home_ownership <- as.numeric(as.factor(lc_data$home_ownership))
 Application joint handling:
 
 ```{r}
-
-# merging annual income
-lc_data <- lc_data %>% mutate(
-    annual_inc_merged = ifelse(is.na(annual_inc_joint)== TRUE, annual_inc,annual_inc_joint)) 
-
-lc_data <- lc_data %>% select(-annual_inc,-annual_inc_joint)
-
-# merging debt to income ratio
-lc_data <- lc_data %>% mutate(
-    dti_merged = ifelse(is.na(dti_joint)== TRUE, dti,dti_joint)) 
-
-lc_data <- lc_data %>% select(-dti,-dti_joint)
-
+lc_data <- lc_data %>% select(-dti_joint,-annual_inc_joint)
 ```
 
-Upon reviewing the summary again, it becomes apparent that there are merely 460 joint applications, constituting a small subset within the extensive dataset of around 800k rows. Through consolidating the debt-to-income ratios (dti's), we can pinpoint the data pertinent to our research objectives. Hence, it is advisable to eliminate the columns verification_status_joint and application_type to prevent introducing unwarranted variability into our analysis.
+Upon reviewing the summary again, it becomes apparent that there are less than 100 joint applications, constituting a small subset within the extensive dataset of around 800k rows. Through consolidating the debt-to-income ratios (dti's), we can pinpoint the data pertinent to our research objectives. Hence, it is advisable to eliminate the columns verification_status_joint and application_type to prevent introducing unwarranted variability into our analysis.
 
 ```{r}
 table(lc_data$verification_status)
@@ -678,7 +668,7 @@ for(i in seq_along(folds)) {
   test_data_fold <- train_data[test_indices, ]
   
   # fit the model on the training fold
-  rf.k5 <- ranger(formula = int_rate ~ ., data = train_data, num.trees = 500, verbose=TRUE, importance = "impurity", oob.error = TRUE)
+  rf.k5 <- ranger(formula = int_rate ~ ., data = train_data_fold, num.trees = 500, verbose=TRUE, importance = "impurity", oob.error = TRUE)
   rf.k5.models[[i]] <- rf.k5  # Store the model
   
   # make predictions on the training and testing fold
@@ -711,6 +701,13 @@ for(i in seq_along(folds)) {
 print(rf.k5.models)
 print(rf.k5.results)
 ```
+```{r}
+best_model <- rf.k5.models[3]
+saveRDS(best_model, file = "rf")
+```
+
+
+
 ```{r}
 # reshape data for plotting
 rf.k5.results_long <- melt(rf.k5.results, id.vars = 'Fold')
