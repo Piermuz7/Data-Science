@@ -1,0 +1,205 @@
+---
+title: "Several Optimisers for neural network"
+output: 
+  html_notebook: 
+    theme: cerulean
+    highlight: textmate
+---
+
+***
+
+This notebook contains originally the code samples found in Chapter 2, Section 1 of [Deep Learning with R](https://www.manning.com/books/deep-learning-with-r). However that example is adapted for experimenting with several optimizers
+
+***
+
+```{r, results='hide'}
+library(keras)
+library(ggplot2)
+```
+
+## Data Loading and Preprocessing
+
+First we load the data and assign them to the training and test variables.
+
+```{r}
+mnist <- dataset_mnist()
+train_images <- mnist$train$x
+train_labels <- mnist$train$y
+test_images <- mnist$test$x
+test_labels <- mnist$test$y
+```
+
+We'll preprocess the data by reshaping it into the shape the network expects and scaling it so that all values are in the `[0, 1]` interval. 
+
+```{r}
+train_images <- array_reshape(train_images, c(60000, 28 * 28))
+train_images <- train_images / 255
+
+test_images <- array_reshape(test_images, c(10000, 28 * 28))
+test_images <- test_images / 255
+```
+
+We also need to categorically encode the labels, a step which we explain in chapter 3:
+
+```{r}
+train_labels <- to_categorical(train_labels)
+test_labels <- to_categorical(test_labels)
+```
+
+## Model Definition
+
+Let's build the network but this time we do it with a function returning the same model to every optimizers. The optimizer is a parameter to this function
+
+```{r}
+create_model_and_train <- function(my_optimizer, my_train_images=train_images, my_train_labels=train_labels) {
+  model <- keras_model_sequential() %>% 
+    layer_dense(units = 256, activation = "relu", input_shape = c(28 * 28)) %>% 
+    layer_dense(units = 50, activation = "relu") %>% 
+    layer_dense(units = 10, activation = "softmax")
+  
+  model %>% compile(
+    optimizer = my_optimizer,
+    loss = "categorical_crossentropy",
+    metrics = c("accuracy"))
+
+  history <- model %>% fit(my_train_images, my_train_labels, epochs = 10)
+
+  return(history)
+}
+```
+
+## Using Model
+
+
+### Stochastic Gradient descent
+
+First me need to instantiate the optimiser
+
+```{r}
+my_optimizer <- optimizer_sgd(
+  lr = 0.01,
+  momentum = 0,
+  decay = 0,
+  nesterov = FALSE,
+  clipnorm = NULL,
+  clipvalue = NULL
+)
+```
+
+Then we instantiate, train and evaluate the model. The results of the training, i.e. its history, will be stored in the history variable. 
+
+```{r, echo=TRUE, results='hide'}
+history <- create_model_and_train(my_optimizer)
+```
+
+Now we need to store the loss and the accuracy in some variables.
+
+```{r}
+hist_loss <- data.frame(sgd = history$metrics$loss)
+hist_acc <- data.frame(sgd =history$metrics$accuracy)
+```
+
+### Momentum
+
+```{r}
+my_optimizer <- optimizer_sgd(
+  lr = 0.01,
+  momentum = 0.9,
+  decay = 0,
+  nesterov = FALSE,
+  clipnorm = NULL,
+  clipvalue = NULL
+)
+```
+
+Then we instantiate, train and evaluate the model. The results of the training, i.e. its history, will be stored in the history variable. 
+
+```{r, echo=TRUE, results='hide'}
+history <- create_model_and_train(my_optimizer)
+```
+
+Here we aslo need to store the loss and the accuracy in the appropriate history variables.
+
+```{r}
+hist_loss$momentum <- history$metrics$loss
+hist_acc$momentum <- history$metrics$accuracy
+```
+
+### RMSprop
+
+First me need to instantiate the optimiser
+
+```{r}
+my_optimizer <- optimizer_rmsprop(
+  lr = 0.001,
+  rho = 0.9,
+  epsilon = NULL,
+  decay = 0,
+  clipnorm = NULL,
+  clipvalue = NULL
+)
+```
+
+Then we instantiate, train and evaluate the model. The results of the training, i.e. its history, will be stored in the history variable. 
+
+```{r, echo=TRUE, results='hide'}
+history <- create_model_and_train(my_optimizer)
+```
+
+Here we aslo need to store the loss and the accuracy in the appropriate history variables.
+
+```{r}
+hist_loss$rmsprop <- history$metrics$loss
+hist_acc$rmsprop <- history$metrics$accuracy
+```
+
+### ADAM
+
+First me need to instantiate the optimiser
+
+```{r}
+my_optimizer <- optimizer_adam(
+  lr = 0.001,
+  beta_1 = 0.9,
+  beta_2 = 0.999,
+  epsilon = NULL,
+  decay = 0,
+  amsgrad = FALSE,
+  clipnorm = NULL,
+  clipvalue = NULL
+)
+```
+
+Then we instantiate, train and evaluate the model. The results of the training, i.e. its history, will be stored in the history variable. 
+
+```{r, echo=TRUE, results='hide'}
+history <- create_model_and_train(my_optimizer)
+```
+
+Here we aslo need to store the loss and the accuracy in the appropriate history variables.
+
+```{r}
+hist_loss$adam <- history$metrics$loss
+hist_acc$adam <- history$metrics$accuracy
+```
+
+## Plot the results
+
+```{r}
+ggplot(hist_loss) + geom_line(aes(1:length(sgd), sgd), color="red") +
+                    geom_line(aes(1:length(momentum), momentum), color="green") +
+                    geom_line(aes(1:length(rmsprop), rmsprop), color="blue") +
+                    geom_line(aes(1:length(adam), adam), color="black") +
+                    xlab('Epochs') +
+                    ylab('Loss')
+
+```
+```{r}
+ggplot(hist_acc) + geom_line(aes(1:length(sgd), sgd), color="red") +
+                    geom_line(aes(1:length(momentum), momentum), color="green") +
+                    geom_line(aes(1:length(rmsprop), rmsprop), color="blue") +
+                    geom_line(aes(1:length(adam), adam), color="black") +
+                    xlab('Epochs') +
+                    ylab('Accurancy')
+
+```
