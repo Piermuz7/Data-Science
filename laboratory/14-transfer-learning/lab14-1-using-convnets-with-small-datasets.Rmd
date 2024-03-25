@@ -1,0 +1,122 @@
+---
+title: "Using convnets with small datasets"
+output: 
+  html_notebook: 
+    theme: cerulean
+    highlight: textmate
+---
+
+***
+
+This notebook contains a SIMPLIFIED VERSION of the code samples found in Chapter 5, Section 2 of [Deep Learning with R](https://www.manning.com/books/deep-learning-with-r). 
+
+***
+
+## Training a convnet from scratch on a small dataset
+
+Having to train an image classification model using only very little data is a common situation, which you likely encounter yourself in practice if you ever do computer vision in a professional context.
+
+Having "few" samples can mean anywhere from a few hundreds to a few tens of thousands of images. As a practical example, we will focus on classifying images as "dogs" or "cats", in a dataset containing 4000 pictures of cats and dogs (2000 cats, 2000 dogs). We will use 2000 pictures for training, 1000 for validation, and finally 1000 for testing.
+
+In this section, we will review one basic strategy to tackle this problem: training a new model from scratch on what little data we have. We will start by naively training a small convnet on our 2000 training samples, without any regularization, to set a baseline for what can be achieved. This will get us to a classification accuracy of 71%. At that point, our main issue will be overfitting. Then we will introduce *data augmentation*, a powerful technique for mitigating overfitting in computer vision. By leveraging data augmentation, we will improve our network to reach an accuracy of 82%.
+
+In the next section, we will review two more essential techniques for applying deep learning to small datasets: *doing feature extraction with a pre-trained network* (this will get us to an accuracy of 90% to 93%), and *fine-tuning a pre-trained network* (this will get us to our final accuracy of 95%). Together, these three strategies -- training a small model from scratch, doing feature extracting using a pre-trained model, and fine-tuning a pre-trained model -- will constitute your future toolbox for tackling the problem of doing computer vision with small datasets.
+
+## Downloading the data
+
+The cats vs. dogs dataset that we will use isn't packaged with Keras. It was made available by Kaggle.com as part of a computer vision competition in late 2013, back when convnets weren't quite mainstream. You can download the original dataset at: https://www.kaggle.com/c/dogs-vs-cats/data (you will need to create a Kaggle account if you don't already have one -- don't worry, the process is painless).
+
+The pictures are medium-resolution color JPEGs. They look like this:
+
+![cats_vs_dogs_samples](https://s3.amazonaws.com/book.keras.io/img/ch5/cats_vs_dogs_samples.jpg)
+
+Unsurprisingly, the cats vs. dogs Kaggle competition in 2013 was won by entrants who used convnets. The best entries could achieve up to 95% accuracy. In our own example, we will get fairly close to this accuracy (in the next section), even though we will be training our models on less than 10% of the data that was available to the competitors. This original dataset contains 25,000 images of dogs and cats (12,500 from each class) and is 543MB large (compressed). After downloading and uncompressing it, we will create a new dataset containing three subsets: a training set with 1000 samples of each class, a validation set with 500 samples of each class, and finally a test set with 500 samples of each class.
+
+[Holger] I preprocessed the data. So the only what you need to do is to load a file:
+
+```{r}
+setwd("~/FHNW/O365_G_DataScience_Admin - General/Slides/15-Transfer/_Exercises")
+load("_DATA/My_Images.RDATA")
+x_train <- my_images$train$x
+y_train <- my_images$train$y
+x_val <- my_images$val$x
+y_val <- my_images$val$y
+```
+
+So we have indeed 2000 training images, and then 1000 validation images and 1000 test images. In each split, there is the same number of samples from each class: this is a balanced binary classification problem, which means that classification accuracy will be an appropriate measure of success.
+
+## Building our network
+
+You built a small convnet for MNIST in the previous example, so you should be familiar with convnets. You'll reuse the same general structure: the convnet will be a stack of alternated `layer_conv_2d()` (with `relu` activation) and `layer_max_pooling_2d()` stages.
+
+But because you're dealing with bigger images and a more complex problem, you'll make your network larger, accordingly: it will have one more `layer_conv_2d()` + `layer_max_pooling_2d()` stage. This serves both to augment the capacity of the network and to further reduce the size of the feature maps so they aren't overly large when you reach the `layer_flatten()`. Here, because you start from inputs of size 150 × 150 (a somewhat arbitrary choice), you end up with feature maps of size 7 × 7 just before the `layer_flatten()`.
+
+The depth of the feature maps progressively increases in the network (from 32 to 128), whereas the size of the feature maps decreases (from 148 × 148 to 7 × 7). This is a pattern you'll see in almost all convnets.
+
+Because you're attacking a binary-classification problem, you'll end the network with a single unit (a `layer_dense()` of size 1) and a `sigmoid` activation. This unit will encode the probability that the network is looking at one class or the other.
+
+
+```{r}
+library(keras)
+
+model <- keras_model_sequential() %>% 
+  layer_conv_2d(filters = 32, kernel_size = c(3, 3), activation = "relu",
+                input_shape = c(150, 150, 3)) %>% 
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>% 
+  layer_conv_2d(filters = 64, kernel_size = c(3, 3), activation = "relu") %>% 
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>% 
+  layer_conv_2d(filters = 128, kernel_size = c(3, 3), activation = "relu") %>% 
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>% 
+  layer_conv_2d(filters = 128, kernel_size = c(3, 3), activation = "relu") %>% 
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>% 
+  layer_flatten() %>% 
+  layer_dense(units = 512, activation = "relu") %>% 
+  layer_dense(units = 1, activation = "sigmoid")
+```
+
+Let's take a look at how the dimensions of the feature maps change with every successive layer:
+
+```{r}
+summary(model)
+```
+
+For our compilation step, we'll go with the `RMSprop` optimizer as usual. Since we ended our network with a single sigmoid unit, we will use binary crossentropy as our loss (as a reminder, check out the table in Chapter 4, section 5 for a cheatsheet on what loss function to use in various situations).
+
+```{r}
+model %>% compile(
+  loss = "binary_crossentropy",
+  optimizer = optimizer_rmsprop(lr = 1e-4),
+  metrics = c("acc")
+)
+```
+
+Let's fit the model to the data. 
+
+[Holger] Here we do not use the generators but just the data.
+
+```{r}
+history <- model %>% fit(
+  x_train,
+  y_train,
+  epochs = 30,
+  batch_size = 20,
+  validation_data = list(x_val, y_val)
+)
+```
+
+It is good practice to always save your models after training:
+
+```{r}
+model %>% save_model_hdf5("cats_and_dogs_small_1.h5")
+```
+
+Let's plot the loss and accuracy of the model over the training and validation data during training:
+
+```{r}
+plot(history)
+```
+
+These plots are characteristic of overfitting. Our training accuracy increases linearly over time, until it reaches nearly 100%, while our validation accuracy stalls at 70-72%. Our validation loss reaches its minimum after only five epochs then stalls, while the training loss keeps decreasing linearly until it reaches nearly 0.
+
+Because we only have relatively few training samples (2000), overfitting is going to be our number one concern.
+
